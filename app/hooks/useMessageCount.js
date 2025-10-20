@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { useSocket } from "@/app/providers/SocketProvider";
-import messaging from "@/app/lib/api/messaging";
+import { messaging } from "@/app/lib/api/messaging";
 
 export const useMessageCount = () => {
   const [unreadCount, setUnreadCount] = useState(0);
