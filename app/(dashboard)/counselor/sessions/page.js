@@ -76,12 +76,55 @@ const StatusBadge = ({ status }) => {
 
 // Session Card Component
 const SessionCard = ({ session, onView, onMessage, onJoinMeeting, userRole }) => {
-  const formatDateTime = (date, time) => {
+  const formatDateTime = (session) => {
     try {
-      const dateTime = new Date(`${date}T${time}`);
-      return format(dateTime, "MMM dd, yyyy 'at' h:mm a");
+      // Debug logging to see what data we're getting
+      console.log("Session data for formatting:", {
+        startTime: session.startTime,
+        endTime: session.endTime,
+        sessionDate: session.sessionDate,
+        sessionTime: session.sessionTime,
+        sessionType: session.sessionType
+      });
+
+      // Use startTime and endTime if available, otherwise fall back to sessionDate/sessionTime
+      if (session.startTime && session.endTime) {
+        const startDateTime = new Date(session.startTime);
+        const endDateTime = new Date(session.endTime);
+        
+        console.log("Parsed times:", {
+          startDateTime: startDateTime.toISOString(),
+          endDateTime: endDateTime.toISOString()
+        });
+        
+        // Check if it's the same day
+        const isSameDay = startDateTime.toDateString() === endDateTime.toDateString();
+        
+        if (isSameDay) {
+          return `${format(startDateTime, "MMM dd, yyyy")} from ${format(startDateTime, "h:mm a")} to ${format(endDateTime, "h:mm a")}`;
+        } else {
+          return `${format(startDateTime, "MMM dd, yyyy 'at' h:mm a")} to ${format(endDateTime, "MMM dd, yyyy 'at' h:mm a")}`;
+        }
+      } else if (session.sessionDate && session.sessionTime) {
+        // Fallback to old format - but calculate end time based on session duration
+        const startDateTime = new Date(`${session.sessionDate}T${session.sessionTime}`);
+        
+        // Calculate end time based on session type
+        let durationMinutes = 60; // default
+        if (session.sessionType === "30min") {
+          durationMinutes = 30;
+        } else if (session.sessionType === "60min") {
+          durationMinutes = 60;
+        }
+        
+        const endDateTime = new Date(startDateTime.getTime() + (durationMinutes * 60 * 1000));
+        
+        return `${format(startDateTime, "MMM dd, yyyy")} from ${format(startDateTime, "h:mm a")} to ${format(endDateTime, "h:mm a")}`;
+      }
+      return "Time not specified";
     } catch (error) {
-      return `${date} at ${time}`;
+      console.error("Error formatting date time:", error);
+      return "Invalid time format";
     }
   };
 
@@ -137,7 +180,7 @@ const SessionCard = ({ session, onView, onMessage, onJoinMeeting, userRole }) =>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="flex items-center text-sm text-gray-600">
               <CalendarIcon className="h-4 w-4 mr-2" />
-              {formatDateTime(session.sessionDate, session.sessionTime)}
+              {formatDateTime(session)}
             </div>
             <div className="flex items-center text-sm text-gray-600">
               <ClockIcon className="h-4 w-4 mr-2" />

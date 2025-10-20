@@ -29,9 +29,11 @@ export default function DateTimePicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [authError, setAuthError] = useState(false);
+  const [recentlyBookedSlots, setRecentlyBookedSlots] = useState([]);
 
   const [date, setDate] = useState(selectedDate);
   const [time, setTime] = useState(selectedTime);
+  const [selectedAvailabilityId, setSelectedAvailabilityId] = useState(null);
 
   // Check authentication before component mounts
   useEffect(() => {
@@ -78,6 +80,45 @@ export default function DateTimePicker({
 
     fetchAvailability();
   }, [tutorId, authError]);
+
+  // Load recently booked slots from localStorage to avoid showing duplicates immediately
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('recentlyBookedSlots');
+      const parsed = raw ? JSON.parse(raw) : [];
+      setRecentlyBookedSlots(Array.isArray(parsed) ? parsed : []);
+    } catch (e) {
+      setRecentlyBookedSlots([]);
+    }
+  }, [tutorId]);
+
+  // Keep internal duration in sync with parent-provided duration
+  useEffect(() => {
+    setSelectedDuration(duration || 60);
+  }, [duration]);
+
+  // Normalize incoming selected time (label like "3:00 PM" or value like "15:00")
+  useEffect(() => {
+    if (!selectedTime) return;
+    try {
+      // If the prop already looks like HH:mm, keep it; otherwise parse label
+      const isValue = /^\d{2}:\d{2}$/.test(selectedTime);
+      const normalized = isValue
+        ? selectedTime
+        : format(parse(selectedTime, "h:mm a", new Date()), "HH:mm");
+      setTime(normalized);
+    } catch (e) {
+      // If parsing fails, keep as-is
+      setTime(selectedTime);
+    }
+  }, [selectedTime]);
+
+  // Keep local date in sync if parent updates it (e.g., navigating back)
+  useEffect(() => {
+    if (selectedDate) {
+      setDate(selectedDate);
+    }
+  }, [selectedDate]);
 
   // Generate available dates based on tutor availability
   useEffect(() => {
@@ -243,8 +284,25 @@ export default function DateTimePicker({
     });
 
     console.log(`Generated ${times.length} time slots:`, times);
-    setAvailableTimes(times);
-  }, [date, availabilityData, selectedDuration]);
+    // Filter out any recently booked slots for this tutor/date to prevent duplicates
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const filtered = times.filter((t) => {
+      return !recentlyBookedSlots.some((b) =>
+        b && b.tutorId === tutorId && b.date === dateKey && b.value === t.value
+      );
+    });
+    setAvailableTimes(filtered);
+  }, [date, availabilityData, selectedDuration, recentlyBookedSlots, tutorId]);
+
+  // After generating available times, if we already have a selected time value,
+  // ensure the highlight persists and restore availabilityId for the slot
+  useEffect(() => {
+    if (!time || !availableTimes || availableTimes.length === 0) return;
+    const matched = availableTimes.find((t) => t.value === time);
+    if (matched) {
+      setSelectedAvailabilityId(matched.availabilityId);
+    }
+  }, [availableTimes, time]);
 
   const handleDateSelect = (selectedDate) => {
     setDate(selectedDate);
@@ -253,6 +311,7 @@ export default function DateTimePicker({
 
   const handleTimeSelect = (selectedTime) => {
     setTime(selectedTime.value);
+    setSelectedAvailabilityId(selectedTime.availabilityId);
     if (date) {
       const endTime = addMinutes(
         parse(selectedTime.value, "HH:mm", new Date()),
@@ -277,6 +336,26 @@ export default function DateTimePicker({
     result.setHours(hours, minutes, 0, 0);
     return result.toISOString();
   };
+
+  // When duration changes after a time is already selected, propagate the new duration
+  useEffect(() => {
+    if (!date || !time) return;
+    try {
+      const startLabel = format(parse(time, "HH:mm", new Date()), "h:mm a");
+      const endTime = addMinutes(parse(time, "HH:mm", new Date()), selectedDuration);
+      onSelect(
+        date,
+        startLabel,
+        format(endTime, "h:mm a"),
+        selectedDuration,
+        createISO(date, time),
+        createISO(date, format(endTime, "HH:mm")),
+        selectedAvailabilityId
+      );
+    } catch (e) {
+      // no-op; guard against parsing issues
+    }
+  }, [selectedDuration]);
 
   // Show authentication error
   if (authError) {

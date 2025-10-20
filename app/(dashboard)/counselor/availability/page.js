@@ -12,6 +12,7 @@ import {
   ExclamationTriangleIcon,
   ClockIcon,
   UserGroupIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import { counselorAvailability as availabilityAPI } from "@/app/lib/api/endpoints";
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
@@ -55,6 +56,8 @@ export default function CounselorAvailability() {
   const [defaultIsAvailable, setDefaultIsAvailable] = useState(true);
   const [defaultRecurrence, setDefaultRecurrence] = useState("weekly");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [editingSlotId, setEditingSlotId] = useState(null);
+  const [editingData, setEditingData] = useState({});
 
   // Confirmation modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -179,6 +182,114 @@ export default function CounselorAvailability() {
     setNewSlots((prev) => prev.filter((slot) => slot.id !== slotId));
   };
 
+  // Helper to convert HH:MM to minutes (for validation)
+  const toMinutes = (time) => {
+    const [h, m] = String(time || "").split(":").map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN;
+  };
+
+  // Format HH:MM (24h) to 12-hour with AM/PM
+  const formatTime12h = (time) => {
+    const [hStr, mStr] = String(time || "").split(":");
+    const h = Number(hStr);
+    const m = Number(mStr);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return String(time || "");
+    const period = h >= 12 ? "PM" : "AM";
+    const hour12 = ((h + 11) % 12) + 1; // 0->12, 13->1
+    const mm = String(m).padStart(2, "0");
+    return `${hour12}:${mm} ${period}`;
+  };
+
+  // Format a range and append (next day) if it crosses midnight
+  const formatRangeWithNextDay = (start, end) => {
+    const startMin = toMinutes(start);
+    const endMin = toMinutes(end);
+    const crossesMidnight = Number.isFinite(startMin) && Number.isFinite(endMin) && endMin <= startMin;
+    const base = `${formatTime12h(start)} - ${formatTime12h(end)}`;
+    return crossesMidnight ? `${base} (next day)` : base;
+  };
+
+  // Begin editing existing slot
+  const startEditing = (slot) => {
+    setEditingSlotId(slot.id);
+    setEditingData({
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isAvailable: slot.isAvailable !== false,
+      sessionTypes: Array.isArray(slot.sessionTypes) ? slot.sessionTypes : ["30min", "60min"],
+      maxSessionsPerDay: slot.maxSessionsPerDay || 8,
+      recurrence: slot.recurrence || "weekly",
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingSlotId(null);
+    setEditingData({});
+  };
+
+  const updateEditingField = (field, value) => {
+    setEditingData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveEditing = async (slotId) => {
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      // Validate times: allow cross-midnight, ensure format
+      const startMin = toMinutes(editingData.startTime);
+      const endMin = toMinutes(editingData.endTime);
+      if (isNaN(startMin) || isNaN(endMin)) {
+        throw new Error(`Invalid time format: ${editingData.startTime} - ${editingData.endTime}`);
+      }
+
+      const payload = {
+        startTime: String(editingData.startTime).substring(0, 5),
+        endTime: String(editingData.endTime).substring(0, 5),
+        isAvailable: Boolean(editingData.isAvailable),
+        sessionTypes: editingData.sessionTypes,
+        maxSessionsPerDay: editingData.maxSessionsPerDay,
+      };
+
+      const result = await safeApiCall(() => availabilityAPI.update(slotId, payload), {
+        extractArray: false,
+        dataKey: "data",
+        defaultData: null,
+        errorMessage: "Failed to update availability slot. Please try again.",
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Update failed");
+      }
+
+      // Reflect changes in UI
+      setScheduleData((prev) =>
+        prev.map((s) =>
+          s.id === slotId
+            ? {
+                ...s,
+                startTime: payload.startTime,
+                endTime: payload.endTime,
+                isAvailable: payload.isAvailable,
+                sessionTypes: payload.sessionTypes,
+                maxSessionsPerDay: payload.maxSessionsPerDay,
+              }
+            : s
+        )
+      );
+
+      setEditingSlotId(null);
+      setEditingData({});
+      toast.success("Availability slot updated");
+    } catch (err) {
+      console.error("Error updating slot:", err);
+      setErrorMessage(err.message || String(err));
+      toast.error("Failed to update availability slot");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Delete existing slot
   const deleteSlot = async (slotId) => {
     console.log("🔴 DELETE SLOT: Starting delete process for slot ID:", slotId);
@@ -246,10 +357,16 @@ export default function CounselorAvailability() {
     setErrorMessage("");
 
     try {
-      // Validate time slots
+      // Validate time slots - allow cross-midnight (like tutor availability)
       for (const slot of newSlots) {
-        if (slot.startTime >= slot.endTime) {
-          throw new Error("Start time must be before end time");
+        const startMin = toMinutes(slot.startTime);
+        const endMin = toMinutes(slot.endTime);
+
+        // Only ensure valid time format; end may be <= start for cross-midnight
+        if (isNaN(startMin) || isNaN(endMin)) {
+          throw new Error(
+            `Invalid time format for slot: ${slot.startTime} - ${slot.endTime}`
+          );
         }
 
         // Validate dayOfWeek is a number between 0-6
@@ -548,37 +665,138 @@ export default function CounselorAvailability() {
                               {days[slot.dayOfWeek]?.name}
                             </span>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <ClockIcon className="h-5 w-5 text-gray-400" />
-                            <span>
-                              {slot.startTime} - {slot.endTime}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <UserGroupIcon className="h-5 w-5 text-gray-400" />
-                            <span>
-                              {slot.sessionTypes?.join(", ") || "30min, 60min"}
-                            </span>
-                          </div>
-                          <span className="text-sm text-gray-500">
-                            Max: {slot.maxSessionsPerDay} sessions/day
-                          </span>
+                          {editingSlotId === slot.id ? (
+                            <>
+                              {/* Editing view */}
+                              <div className="flex items-center space-x-2">
+                                <ClockIcon className="h-5 w-5 text-gray-400" />
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="time"
+                                    value={editingData.startTime}
+                                    onChange={(e) => updateEditingField("startTime", e.target.value)}
+                                    className="block w-32 rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                  <span className="text-gray-500">to</span>
+                                  <input
+                                    type="time"
+                                    value={editingData.endTime}
+                                    onChange={(e) => updateEditingField("endTime", e.target.value)}
+                                    className="block w-32 rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                              </div>
+                              {/* <div className="flex items-center space-x-3">
+                                <label className="flex items-center text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!editingData.isAvailable}
+                                    onChange={(e) => updateEditingField("isAvailable", e.target.checked)}
+                                    className="h-4 w-4 text-blue-600 focus:ring-2 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                                  />
+                                  Available
+                                </label>
+                              </div> */}
+                              <div className="flex items-center space-x-2">
+                                <UserGroupIcon className="h-5 w-5 text-gray-400" />
+                                <div className="flex items-center space-x-3">
+                                  {sessionTypes.map((type) => (
+                                    <label key={type.value} className="flex items-center text-sm text-gray-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={editingData.sessionTypes?.includes(type.value)}
+                                        onChange={(e) => {
+                                          const current = editingData.sessionTypes || [];
+                                          const next = e.target.checked
+                                            ? [...current, type.value]
+                                            : current.filter((t) => t !== type.value);
+                                          updateEditingField("sessionTypes", next);
+                                        }}
+                                        className="h-4 w-4 text-blue-600 focus:ring-2 focus:ring-blue-500 border-gray-300 rounded mr-1"
+                                      />
+                                      {type.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <span className="text-sm text-gray-500">
+                                Max per day:
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="20"
+                                  value={editingData.maxSessionsPerDay}
+                                  onChange={(e) => updateEditingField("maxSessionsPerDay", parseInt(e.target.value))}
+                                  className="ml-2 w-20 rounded-lg border-gray-200 bg-white py-1 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {/* Read-only view */}
+                              <div className="flex items-center space-x-2">
+                                <ClockIcon className="h-5 w-5 text-gray-400" />
+                                <span>
+                                  {formatRangeWithNextDay(slot.startTime, slot.endTime)}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <UserGroupIcon className="h-5 w-5 text-gray-400" />
+                                <span>
+                                  {slot.sessionTypes?.join(", ") || "30min, 60min"}
+                                </span>
+                              </div>
+                              <span className="text-sm text-gray-500">
+                                Max: {slot.maxSessionsPerDay} sessions/day
+                              </span>
+                            </>
+                          )}
                         </div>
-                        <button
-                          onClick={() => {
-                            console.log("🔴 DELETE BUTTON CLICKED: Slot ID:", slot.id);
-                            handleDeleteConfirm(slot.id);
-                          }}
-                          className="text-red-600 hover:text-red-900"
-                          disabled={isLoading}
-                          title={
-                            slot.id.startsWith("temp-")
-                              ? "Remove unsaved slot"
-                              : "Delete saved slot"
-                          }
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        <div className="flex items-center space-x-3">
+                          {editingSlotId === slot.id ? (
+                            <>
+                              <button
+                                onClick={() => saveEditing(slot.id)}
+                                disabled={isLoading}
+                                className="text-green-600 hover:text-green-800 text-sm font-medium"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="text-gray-600 hover:text-gray-800 text-sm font-medium"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEditing(slot)}
+                                className="text-blue-600 hover:text-blue-900"
+                                disabled={isLoading}
+                                title="Edit slot"
+                              >
+                                <PencilSquareIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  console.log("🔴 DELETE BUTTON CLICKED: Slot ID:", slot.id);
+                                  handleDeleteConfirm(slot.id);
+                                }}
+                                className="text-red-600 hover:text-red-900"
+                                disabled={isLoading}
+                                title={
+                                  slot.id.startsWith("temp-")
+                                    ? "Remove unsaved slot"
+                                    : "Delete saved slot"
+                                }
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}

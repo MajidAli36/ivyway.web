@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import SessionCard from "./components/SessionCard";
 import SessionFilter from "./components/SessionFilter";
-import SessionDetails from "./components/SessionDetails";
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -21,7 +20,7 @@ import { counselorBookings } from "@/app/lib/api/endpoints";
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
 import sessionService from "@/app/lib/api/sessionService";
 import toast, { Toaster } from "react-hot-toast";
-import SessionButton from "@/app/components/SessionButton";
+// Removed unused SessionButton import
 
 function StudentSessions() {
   const [sessions, setSessions] = useState([]);
@@ -30,8 +29,7 @@ function StudentSessions() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  // Removed SessionDetails modal state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 5;
@@ -134,12 +132,17 @@ function StudentSessions() {
           console.warn("Failed to fetch counselor sessions:", counselorError);
         }
 
-        // Try to fetch tutor sessions using the existing endpoint
+        // Try to fetch tutor sessions using the existing endpoint (exclude counselor bookings)
         try {
           const tutorResult = await apiGet(`bookings/my`);
 
           if (tutorResult && tutorResult.data) {
-            const tutorSessions = tutorResult.data.map((s) => ({
+            // Filter out counselor bookings to prevent duplicates
+            const tutorBookings = tutorResult.data.filter(s => 
+              s.providerRole !== "counselor" && s.serviceType !== "counseling"
+            );
+            
+            const tutorSessions = tutorBookings.map((s) => ({
               id: `tutor-${s.id}`,
               date: s.startTime
                 ? s.startTime.split("T")[0]
@@ -266,14 +269,30 @@ function StudentSessions() {
           allSessions = mockSessions;
         }
 
+        // Deduplicate sessions across sources (counselor + tutor) using booking ID
+        const seenIds = new Set();
+        const dedupedSessions = [];
+        
+        for (const s of allSessions) {
+          // Extract the actual booking ID from the prefixed ID
+          const actualId = s.id.replace(/^(counselor-|tutor-)/, '');
+          
+          if (seenIds.has(actualId)) {
+            console.log(`Skipping duplicate session with ID: ${actualId}`);
+            continue;
+          }
+          seenIds.add(actualId);
+          dedupedSessions.push(s);
+        }
+
         // Sort sessions by date (newest first)
-        allSessions.sort(
+        dedupedSessions.sort(
           (a, b) =>
             new Date(b.date + " " + b.startTime) -
             new Date(a.date + " " + a.startTime)
         );
 
-        setSessions(allSessions);
+        setSessions(dedupedSessions);
 
         // Calculate stats from the fetched sessions
         const stats = {
@@ -286,7 +305,7 @@ function StudentSessions() {
           counseling: 0,
         };
 
-        allSessions.forEach((s) => {
+        dedupedSessions.forEach((s) => {
           stats.total++;
           if (s.status in stats) stats[s.status]++;
           if (s.serviceType === "tutoring") stats.tutoring++;
@@ -462,10 +481,7 @@ function StudentSessions() {
     setCurrentPage(1);
   };
 
-  const openDetails = (sessionId) => {
-    setSelectedSessionId(sessionId);
-    setIsDetailsModalOpen(true);
-  };
+  // Removed openDetails handler and SessionDetails usage
 
   // Filter sessions based on service type
   const filteredSessions = sessions.filter((session) => {
@@ -498,8 +514,7 @@ function StudentSessions() {
     setCurrentPage(1);
   }, [statusFilter, searchQuery, sessions.length]);
 
-  // Always look up fresh session by id
-  const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+  // Removed selectedSession lookup since details modal is removed
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -601,16 +616,11 @@ function StudentSessions() {
         ) : (
           <div className="space-y-6">
             {paginatedSessions.map((s) => (
-              <div
+              <SessionCard
                 key={s.id}
-                onClick={() => openDetails(s.id)}
-                className="cursor-pointer"
-              >
-                <SessionCard
-                  session={s}
-                  onCancelRequest={handleCancelSession}
-                />
-              </div>
+                session={s}
+                onCancelRequest={handleCancelSession}
+              />
             ))}
             {/* Pagination Controls */}
             {totalPages > 1 && (
@@ -662,18 +672,7 @@ function StudentSessions() {
         )}
       </div>
 
-      {selectedSession && (
-        <SessionDetails
-          session={selectedSession}
-          isOpen={isDetailsModalOpen}
-          onClose={() => setIsDetailsModalOpen(false)}
-          onCancelSession={handleCancelSession}
-          onRescheduleSession={async (id) => {
-            await fetchSessions(statusFilter);
-            setIsDetailsModalOpen(false);
-          }}
-        />
-      )}
+      {/* SessionDetails modal removed */}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import TutorCard from "./TutorCard";
 import DateTimePicker from "./DateTimePicker";
 import SessionForm from "./SessionForm";
 import BookingSummary from "./BookingSummary";
+import PaymentForm from "@/app/components/payment/PaymentForm";
 import apiClient from "@/app/lib/api/client";
 import PlanCard from "../../../../components/plans/PlanCard";
 import PlanFilters from "../../../../components/plans/PlanFilters";
@@ -69,6 +70,11 @@ export default function BookingWizard({ onComplete }) {
   });
   const [planSearch, setPlanSearch] = useState("");
   const [selectedService, setSelectedService] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [paymentAmountInCents, setPaymentAmountInCents] = useState(0);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successCountdown, setSuccessCountdown] = useState(5);
 
   useEffect(() => {
     const token = localStorage.getItem("jwt_token");
@@ -470,6 +476,8 @@ export default function BookingWizard({ onComplete }) {
     }
 
     console.log(`Final amountInCents sent to backend: ${sessionPriceInCents}`);
+    // Save for inline payment form
+    setPaymentAmountInCents(sessionPriceInCents);
 
     const bookingPayload = {
       providerId: bookingData.providerId,
@@ -508,19 +516,86 @@ export default function BookingWizard({ onComplete }) {
       localStorage.removeItem("pendingBooking");
       localStorage.setItem("currentBooking", JSON.stringify(booking));
       if (booking.bookingId) {
-        router.push(`/student/payment/${booking.bookingId}`);
+        // Open inline payment modal instead of navigating
+        setCreatedBooking(booking);
+        setShowPaymentModal(true);
       } else {
         setError("Booking failed: No bookingId returned from backend.");
       }
     } catch (err) {
-      if (err.status === 401) {
+      // Extract message and status for friendlier UX
+      const status = err?.response?.status || err?.status;
+      const backendMsg = err?.response?.data?.message || err?.message || "";
+
+      // Handle already booked/duplicate selection
+      if (String(status) === "400" || /already\s*book/i.test(backendMsg)) {
+        // Persist this attempted slot so pickers hide/disable it on return
+        try {
+          const raw = localStorage.getItem("recentlyBookedSlots");
+          const list = raw ? JSON.parse(raw) : [];
+          list.push({
+            tutorId: bookingData.providerId,
+            date: (bookingData.startTimeISO
+              ? new Date(bookingData.startTimeISO)
+              : new Date()
+            )
+              .toISOString()
+              .slice(0, 10),
+            value: bookingData.startTimeISO
+              ? new Date(bookingData.startTimeISO).toLocaleTimeString("en-GB", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })
+              : null,
+          });
+          localStorage.setItem(
+            "recentlyBookedSlots",
+            JSON.stringify(list.filter(Boolean))
+          );
+        } catch (e) {}
+
+        setError("That time slot was just taken. Please choose another time.");
+        toast.error("That time slot was just taken. Please choose another time.");
+        setCurrentStep(4);
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      // Auth required
+      if (String(status) === "401") {
         localStorage.setItem("pendingBooking", JSON.stringify(bookingData));
         router.push("/login?redirect=/student/book-session");
-      } else {
-        setError(
-          err.message || err.response?.data?.message || "Booking failed"
-        );
+        return;
       }
+
+      // Map common errors to friendly copy
+      let friendly = "Booking failed. Please try again.";
+      switch (String(status)) {
+        case "403":
+          friendly = "You don't have permission to book this session.";
+          break;
+        case "404":
+          friendly = "Selected provider was not found. Please reselect a tutor.";
+          break;
+        case "409":
+          friendly = "This time slot is no longer available. Please pick another.";
+          break;
+        case "422":
+          friendly = "Please check your booking details and try again.";
+          break;
+        case "500":
+          friendly = "Server error while creating your booking. Please try again later.";
+          break;
+        default:
+          // Fall back to backend message if it's user-friendly, otherwise generic
+          friendly = backendMsg && /[a-z]/i.test(backendMsg)
+            ? backendMsg
+            : friendly;
+      }
+
+      setError(friendly);
+      toast.error(friendly);
     } finally {
       setLoading(false);
     }
@@ -1212,7 +1287,7 @@ export default function BookingWizard({ onComplete }) {
                 className={`px-8 py-3 border-2 rounded-lg text-sm font-semibold transition-colors ${
                   currentStep === 0
                     ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
-                    : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300"
+                    : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300 cursor-pointer"
                 }`}
               >
                 Back
@@ -1245,8 +1320,8 @@ export default function BookingWizard({ onComplete }) {
                   loading
                     ? "bg-blue-300 cursor-not-allowed"
                     : currentStep === steps.length - 1
-                    ? "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-lg"
+                    ? "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg cursor-pointer"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-lg cursor-pointer"
                 }`}
               >
                 {loading ? (
@@ -1266,6 +1341,109 @@ export default function BookingWizard({ onComplete }) {
           </div>
         </div>
       </div>
+    {/* Payment Modal */}
+    {showPaymentModal && createdBooking && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-2xl p-6 relative">
+          <button
+            type="button"
+            onClick={() => setShowPaymentModal(false)}
+            className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+            aria-label="Close"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 111.414 1.415L11.414 10l4.95 4.95a1 1 0 01-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 01-1.414-1.414L8.586 10l-4.95-4.95A1 1 0 115.05 3.636L10 8.586z" clipRule="evenodd" />
+            </svg>
+          </button>
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">Complete Your Payment</h3>
+          <PaymentForm
+            bookingId={createdBooking.bookingId}
+            amount={paymentAmountInCents || 0}
+            currency={createdBooking.currency || "usd"}
+            booking={{
+              ...createdBooking,
+              providerName: bookingData.providerName,
+              subject: bookingData.subject,
+              duration: bookingData.duration,
+              startTime: bookingData.startTimeISO,
+            }}
+            onSuccess={() => {
+              setShowPaymentModal(false);
+              // Persist this slot as recently booked only after successful payment
+              try {
+                const raw = localStorage.getItem('recentlyBookedSlots');
+                const list = raw ? JSON.parse(raw) : [];
+                list.push({
+                  tutorId: bookingData.providerId,
+                  date: (bookingData.startTimeISO ? new Date(bookingData.startTimeISO) : new Date()).toISOString().slice(0,10),
+                  value: bookingData.startTimeISO ? new Date(bookingData.startTimeISO).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : null
+                });
+                localStorage.setItem('recentlyBookedSlots', JSON.stringify(list.filter(Boolean)));
+              } catch (e) {}
+              setShowSuccessPopup(true);
+              setSuccessCountdown(5);
+              const interval = setInterval(() => {
+                setSuccessCountdown((s) => {
+                  if (s <= 1) {
+                    clearInterval(interval);
+                    router.push('/student/my-sessions');
+                    return 0;
+                  }
+                  return s - 1;
+                });
+              }, 1000);
+            }}
+            onError={(e) => {
+              console.error(e);
+            }}
+            onCancel={async () => {
+              // Cancel the unpaid booking on modal close
+              try {
+                if (createdBooking?.bookingId) {
+                  await apiClient.put(`/bookings/${createdBooking.bookingId}/cancel`, {
+                    cancellationReason: 'Payment canceled by user',
+                  });
+                }
+              } catch (e) {
+                console.warn('Failed to cancel unpaid booking', e);
+              } finally {
+                setShowPaymentModal(false);
+                setCreatedBooking(null);
+              }
+            }}
+          />
+        </div>
+      </div>
+    )}
+
+    {/* Success Popup */}
+    {showSuccessPopup && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl p-6 text-center">
+          <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-7 h-7 text-green-600"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.25 7.25a1 1 0 01-1.42 0l-3-3a1 1 0 011.42-1.42l2.29 2.29 6.54-6.54a1 1 0 011.42 0z" clipRule="evenodd"/></svg>
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900">Payment successful</h3>
+          <p className="text-gray-600 mt-1">Redirecting to your sessions in {successCountdown}s</p>
+          <div className="mt-5 flex gap-3 justify-center">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer"
+              onClick={() => router.push('/student/book-session')}
+            >
+              Book another session
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 cursor-pointer"
+              onClick={() => router.push('/student/my-sessions')}
+            >
+              View sessions
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

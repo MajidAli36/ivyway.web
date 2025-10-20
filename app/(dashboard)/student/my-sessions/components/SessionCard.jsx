@@ -47,7 +47,7 @@ const statusStyles = {
 };
 
 export default function SessionCard({ session, onCancelRequest }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Always show full details; remove expand/collapse state
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
@@ -120,7 +120,7 @@ export default function SessionCard({ session, onCancelRequest }) {
           : isUpcoming 
             ? "border-blue-200 ring-1 ring-blue-100" 
             : "border-gray-100"
-      } ${isExpanded ? "shadow-md" : ""}`}
+      }`}
     >
       {/* Card Header */}
       <div className="p-4">
@@ -183,20 +183,28 @@ export default function SessionCard({ session, onCancelRequest }) {
             </div>
           </div>
           
-          {/* Cancel button positioned in top-right corner */}
-          {sessionService.canCancelSession(session) && (
+          {/* Cancel button positioned in top-right corner - only for tutor sessions */}
+          {sessionService.canCancelSession(session) && session.serviceType !== "counseling" && (
             <div className="flex-shrink-0 ml-4">
+              {(() => {
+                const start = new Date(session.date + ' ' + session.startTime);
+                const now = new Date();
+                const isTutorWithin24h = (start - now) / (1000 * 60 * 60) < 24;
+                const disableCancel = isCancelling || (session.serviceType === 'tutoring' && isTutorWithin24h);
+                return (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCancelRequest();
                 }}
-                disabled={isCancelling}
+                disabled={disableCancel}
                 className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50 shadow-sm"
               >
                 <XCircleIcon className="h-4 w-4 mr-1.5 text-red-500" />
                 {isCancelling ? "Cancelling..." : "Cancel"}
               </button>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -220,96 +228,7 @@ export default function SessionCard({ session, onCancelRequest }) {
         </div>
       </div>
 
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="border-t px-4 py-3 space-y-3 text-sm text-gray-600">
-          <div className="flex items-center space-x-2">
-            <ClockIcon className="h-4 w-4" />
-            <span>
-              {session.startTime} – {session.endTime} ({session.duration} min)
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            {session.sessionType === "virtual" ? (
-              <VideoCameraIcon className="h-4 w-4" />
-            ) : (
-              <MapPinIcon className="h-4 w-4" />
-            )}
-            <span>
-              {session.sessionType === "virtual"
-                ? "Virtual Session"
-                : "In-person Session"}
-            </span>
-          </div>
-          
-          {/* Provider Details */}
-          <div className="flex items-center space-x-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-              session.serviceType === "counseling" 
-                ? "bg-purple-100 text-purple-600" 
-                : "bg-blue-100 text-blue-600"
-            }`}>
-              {session.serviceType === "counseling" ? "C" : "T"}
-            </div>
-            <span>
-              {session.provider?.name} • {session.provider?.specialization}
-            </span>
-          </div>
-
-          {/* Plan Details */}
-          {session.planName && (
-            <div className="flex items-center space-x-2">
-              <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                session.planName.includes("Advanced") 
-                  ? "bg-purple-100 text-purple-600" 
-                  : "bg-blue-100 text-blue-600"
-              }`}>
-                {session.planName.includes("Advanced") ? "⭐" : "📚"}
-              </div>
-              <span>
-                Plan: {session.planName}
-                {session.amount && (
-                  <span className="text-gray-500 ml-2">
-                    • ${(session.amount / 100).toFixed(2)}
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
-
-          {/* Notes */}
-          {session.notes && (
-            <div className="bg-gray-50 p-2 rounded text-xs">
-              <strong>Notes:</strong> {session.notes}
-            </div>
-          )}
-
-          {/* Zoom button for virtual sessions */}
-          {session.sessionType === "virtual" &&
-            (session.status === "confirmed" ||
-              session.status === "scheduled") && (
-              <div className="mt-2 flex justify-end">
-                <SessionButton session={session} userRole="student" />
-              </div>
-            )}
-        </div>
-      )}
-
-      {/* Toggle Expand Button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsExpanded(!isExpanded);
-        }}
-        className="w-full bg-gray-50 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 flex items-center justify-center"
-      >
-        <span>{isExpanded ? "Show Less" : "Show More"}</span>
-        <ArrowRightIcon
-          className={`ml-1.5 h-3 w-3 transition-transform ${
-            isExpanded ? "rotate-90" : "-rotate-90"
-          }`}
-        />
-      </button>
+    
 
       {/* Cancel Confirmation Modal */}
       {showCancelModal && (

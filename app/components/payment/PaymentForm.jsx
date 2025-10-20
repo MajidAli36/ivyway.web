@@ -66,9 +66,10 @@ const PaymentFormContent = ({
         console.log("Amount type:", typeof amount, "Amount value:", amount);
 
         // The 'amount' prop should already be in cents from the booking wizard
-        // Just ensure it's a proper integer
+        // Convert to dollars for backend validation
         const amountInCents = Math.round(parseFloat(amount));
-        console.log("Final amountInCents sent to backend:", amountInCents);
+        const amountInDollars = amountInCents / 100; // Convert cents to dollars
+        console.log("Final amountInCents:", amountInCents, "amountInDollars:", amountInDollars);
 
         // Ensure currency is uppercase
         const normalizedCurrency = (currency || "USD").toUpperCase();
@@ -76,13 +77,13 @@ const PaymentFormContent = ({
         // Log what we're sending to backend
         console.log("Sending to backend to create payment intent:", {
           bookingId,
-          amount: amountInCents,
+          amount: amountInDollars,
           currency: normalizedCurrency,
         });
 
         const response = await paymentApi.createPaymentIntent(
           bookingId,
-          amountInCents,
+          amountInDollars,
           normalizedCurrency
         );
 
@@ -288,7 +289,7 @@ const PaymentFormContent = ({
           <button
             type="submit"
             disabled={!stripe || isProcessing}
-            className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-lg font-medium shadow-sm hover:from-blue-700 hover:to-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-lg font-medium shadow-sm hover:from-blue-700 hover:to-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             {isProcessing ? (
               <div className="flex items-center justify-center">

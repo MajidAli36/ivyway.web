@@ -27,6 +27,9 @@ import { counselors, counselorBookings } from "@/app/lib/api/endpoints";
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
 import apiClient from "@/app/lib/api/client";
 import authService from "@/app/lib/auth/authService";
+import PaymentForm from "@/app/components/payment/PaymentForm";
+import PaymentStripeProvider from "@/app/providers/PaymentStripeProvider";
+import toast from "react-hot-toast";
 
 // This will be replaced with real API data
 
@@ -216,7 +219,7 @@ function DateTimePicker({
     fetchAvailability();
   }, [counselor]);
 
-  // Generate available dates based on counselor availability
+  // Generate available dates based on counselor availability (include cross-midnight from previous day)
   useEffect(() => {
     if (!availabilityData) {
       setAvailableDates([]);
@@ -239,22 +242,46 @@ function DateTimePicker({
       return;
     }
     
+    // Helper to detect cross-midnight
+    const isCrossMidnight = (slot) => {
+      if (!slot?.startTime || !slot?.endTime) return false;
+      const [sh, sm] = slot.startTime.split(":").map(Number);
+      const [eh, em] = slot.endTime.split(":").map(Number);
+      const startMin = sh * 60 + sm;
+      const endMin = eh * 60 + em;
+      return endMin <= startMin;
+    };
+    
     // Check next 30 days for availability
     for (let i = 0; i < 30; i++) {
       const checkDate = addDays(today, i);
       const dayOfWeek = getDay(checkDate).toString();
       const daySlots = availabilityData.availability?.[dayOfWeek] || [];
+      const prevDayOfWeek = getDay(addDays(checkDate, -1)).toString();
+      const prevDaySlots = availabilityData.availability?.[prevDayOfWeek] || [];
       
       console.log(`Checking day ${dayOfWeek} for date ${checkDate.toISOString().split('T')[0]}:`, daySlots);
+      console.log(`Previous day ${prevDayOfWeek} slots:`, prevDaySlots);
       
       // Only include dates that have available slots for the selected duration
-      const hasAvailableSlots = daySlots.some(slot => {
+      // Include: (1) same-day slots, (2) cross-midnight slots starting previous day
+      const hasAvailableSlotsSameDay = daySlots.some(slot => {
         const sessionTypes = slot.sessionTypes || ["30min", "60min"];
-        console.log(`Slot ${slot.id}: sessionTypes=${JSON.stringify(sessionTypes)}, duration=${duration}, includes=${sessionTypes.includes(duration)}`);
+        console.log(`Same-day slot ${slot.id}: sessionTypes=${JSON.stringify(sessionTypes)}, duration=${duration}, includes=${sessionTypes.includes(duration)}`);
         return sessionTypes.includes(duration);
       });
+      const hasAvailableSlotsPrevCross = prevDaySlots.some(slot => {
+        const isCross = isCrossMidnight(slot);
+        console.log(`Prev-day slot ${slot.id}: startTime=${slot.startTime}, endTime=${slot.endTime}, isCrossMidnight=${isCross}`);
+        if (!isCross) return false;
+        const sessionTypes = slot.sessionTypes || ["30min", "60min"];
+        const includes = sessionTypes.includes(duration);
+        console.log(`Cross-midnight slot: sessionTypes=${JSON.stringify(sessionTypes)}, duration=${duration}, includes=${includes}`);
+        return includes;
+      });
       
-      console.log(`Day ${dayOfWeek} has available slots: ${hasAvailableSlots}`);
+      const hasAvailableSlots = hasAvailableSlotsSameDay || hasAvailableSlotsPrevCross;
+      console.log(`Day ${dayOfWeek} has available slots (including prev-day cross-midnight): ${hasAvailableSlots}`);
       
       if (hasAvailableSlots) {
         dates.push(checkDate);
@@ -271,7 +298,7 @@ function DateTimePicker({
     setAvailableDates(dates);
   }, [availabilityData, duration]);
 
-  // Build available times when date or counselor changes
+  // Build available times when date or counselor changes (include prev-day cross-midnight)
   useEffect(() => {
     if (!date || !availabilityData) {
       setAvailableTimes([]);
@@ -280,13 +307,23 @@ function DateTimePicker({
 
     const dayOfWeek = getDay(date).toString();
     const daySlots = availabilityData.availability?.[dayOfWeek] || [];
+    const prevDayOfWeek = getDay(addDays(date, -1)).toString();
+    const prevDaySlots = availabilityData.availability?.[prevDayOfWeek] || [];
 
     if (!daySlots.length) {
-      setAvailableTimes([]);
-      return;
+      // We might still have early-morning times from previous day's cross-midnight
+      // Continue building from prev-day cross-midnight slots below
     }
 
     const times = [];
+    const emitTime = (dt) => {
+      times.push({
+        label: format(dt, "h:mm a"),
+        value: format(dt, "HH:mm"),
+      });
+    };
+
+    // 1) Same-day slots
     daySlots.forEach((slot) => {
       // Check if slot has sessionTypes and if it includes the selected duration
       const sessionTypes = slot.sessionTypes || ["30min", "60min"];
@@ -314,11 +351,7 @@ function DateTimePicker({
         while (currentTime <= endOfDay) {
           const nextTime = addMinutes(currentTime, 30);
           if (nextTime > endOfDay) break;
-
-          times.push({
-            label: format(currentTime, "h:mm a"),
-            value: format(currentTime, "HH:mm"),
-          });
+          emitTime(currentTime);
           currentTime = nextTime;
         }
         
@@ -329,11 +362,7 @@ function DateTimePicker({
         while (currentTime < endObj) {
           const nextTime = addMinutes(currentTime, 30);
           if (nextTime > endObj) break;
-
-          times.push({
-            label: format(currentTime, "h:mm a"),
-            value: format(currentTime, "HH:mm"),
-          });
+          emitTime(currentTime);
           currentTime = nextTime;
         }
       } else {
@@ -342,12 +371,33 @@ function DateTimePicker({
           const nxt = addMinutes(cur, 30);
           if (nxt > endObj) break;
 
-          times.push({
-            label: format(cur, "h:mm a"),
-            value: format(cur, "HH:mm"),
-          });
+          emitTime(cur);
           cur = nxt;
         }
+      }
+    });
+
+    // 2) Prev-day cross-midnight contributions for early morning of selected date
+    prevDaySlots.forEach((slot) => {
+      const sessionTypes = slot.sessionTypes || ["30min", "60min"];
+      if (!sessionTypes.includes(duration)) return;
+      if (!slot.startTime || !slot.endTime) return;
+
+      const [sh, sm] = slot.startTime.split(":").map(Number);
+      const [eh, em] = slot.endTime.split(":").map(Number);
+      const startMin = sh * 60 + sm;
+      const endMin = eh * 60 + em;
+      if (endMin > startMin) return; // not cross-midnight, skip
+
+      // Generate from midnight to end time on the selected date
+      let currentTime = setMinutes(setHours(new Date(date), 0), 0);
+      const endObj = setMinutes(setHours(new Date(date), eh), em);
+
+      while (currentTime < endObj) {
+        const nextTime = addMinutes(currentTime, 30);
+        if (nextTime > endObj) break;
+        emitTime(currentTime);
+        currentTime = nextTime;
       }
     });
 
@@ -508,6 +558,12 @@ export default function BookCounselorPage() {
   const [counselorsLoading, setCounselorsLoading] = useState(false);
   const [counselorsError, setCounselorsError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [paymentAmountInCents, setPaymentAmountInCents] = useState(0);
+  const [error, setError] = useState(null);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successCountdown, setSuccessCountdown] = useState(5);
 
   const steps = [
     { id: "counselor", name: "Choose Counselor" },
@@ -593,6 +649,7 @@ export default function BookCounselorPage() {
 
   const handleCounselorSelect = (counselor) => {
     setSelectedCounselor(counselor);
+    setError(null); // Clear any existing errors when selecting counselor
     
     // Auto-detect available session types for this counselor
     if (counselor.availability) {
@@ -621,6 +678,7 @@ export default function BookCounselorPage() {
 
   const handleDateTimeSelect = (dateTime) => {
     setSelectedDateTime(dateTime);
+    setError(null); // Clear any existing errors when selecting date/time
     if (dateTime.date && dateTime.time) {
       setCurrentStep(2);
     }
@@ -629,12 +687,14 @@ export default function BookCounselorPage() {
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
+      setError(null); // Clear any existing errors when moving forward
     }
   };
 
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setError(null); // Clear any existing errors when moving back
     }
   };
 
@@ -666,13 +726,23 @@ export default function BookCounselorPage() {
 
     try {
       const sessionType = getSessionTypeInfo(selectedSessionType);
+      // Use selected plan price instead of hardcoded session type price
+      const sessionPrice = selectedPlan ? (selectedPlan.calculatedPrice || selectedPlan.price) : sessionType.price;
+      
+      console.log("Payment calculation:", {
+        selectedPlan: selectedPlan,
+        planPrice: selectedPlan ? (selectedPlan.calculatedPrice || selectedPlan.price) : null,
+        sessionTypePrice: sessionType.price,
+        finalSessionPrice: sessionPrice,
+        paymentAmountInCents: sessionPrice * 100
+      });
       const startTime = new Date(selectedDateTime.date);
       const [hours, minutes] = selectedDateTime.time.split(":");
       startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
       const endTime = addMinutes(startTime, sessionType.duration);
 
       // Prepare booking data for API
-      const bookingData = {
+      const counselorBookingData = {
         counselorId: selectedCounselor.id,
         providerRole: "counselor",
         serviceType: "counseling",
@@ -684,11 +754,11 @@ export default function BookCounselorPage() {
         subject: "Academic Counseling",
         topic: "General Guidance",
         status: "pending",
-        amount: sessionType.price * 100, // Convert to cents
+        amount: sessionPrice * 100, // Convert to cents
         currency: "usd",
       };
 
-      console.log("Creating counselor booking:", bookingData);
+      console.log("Creating counselor booking:", counselorBookingData);
 
       // Validate required data before API call
       if (!selectedCounselor?.id) {
@@ -701,45 +771,12 @@ export default function BookCounselorPage() {
         throw new Error("Invalid session type");
       }
 
-      // Create booking via API
-      console.log("Calling counselorBookings.create with:", bookingData);
+      // Create booking via API - handle errors BEFORE opening payment modal
+      console.log("Calling counselorBookings.create with:", counselorBookingData);
 
-      let response;
-      try {
-        response = await counselorBookings.create(bookingData);
-        console.log("Booking created successfully:", response);
-        console.log("Response data:", response.data);
-      } catch (apiError) {
-        console.warn(
-          "API call failed, using mock response for testing:",
-          apiError?.message || apiError
-        );
-
-        // Create a mock response for testing when backend is not available
-        response = {
-          data: {
-            id: `booking_${Date.now()}`,
-            bookingId: `BOOK_${Date.now()}`,
-            counselorId: bookingData.counselorId,
-            studentId: "current_student",
-            providerRole: bookingData.providerRole,
-            serviceType: bookingData.serviceType,
-            startTime: bookingData.startTime,
-            endTime: bookingData.endTime,
-            sessionType: bookingData.sessionType,
-            duration: bookingData.duration,
-            notes: bookingData.notes,
-            subject: bookingData.subject,
-            topic: bookingData.topic,
-            status: bookingData.status,
-            amount: bookingData.amount,
-            currency: bookingData.currency,
-            createdAt: new Date().toISOString(),
-          },
-        };
-
-        console.log("Using mock response:", response);
-      }
+      const response = await counselorBookings.create(counselorBookingData);
+      console.log("Booking created successfully:", response);
+      console.log("Response data:", response.data);
 
       // Validate response
       if (!response || !response.data) {
@@ -750,81 +787,102 @@ export default function BookCounselorPage() {
         throw new Error("Booking created but no ID returned");
       }
 
-      // Store counselor data in localStorage for payment page
-      const counselorData = {
-        counselor: {
-          id: selectedCounselor.id,
-          name: selectedCounselor.name,
-          title: selectedCounselor.title || "Academic Counselor",
-          avatar: selectedCounselor.avatar || "/default-avatar.png",
-        },
+      // Prepare booking data for payment modal
+      const bookingData = {
         bookingId: response.data.id,
+        counselorId: selectedCounselor.id,
+        counselorName: selectedCounselor.name,
+        counselorTitle: selectedCounselor.title || "Academic Counselor",
+        counselorAvatar: selectedCounselor.avatar || "/default-avatar.png",
         sessionType: selectedSessionType,
         date: selectedDateTime.date.toISOString().split("T")[0],
         time: selectedDateTime.time,
         notes: sessionNotes || "",
+        amount: sessionPrice * 100, // Convert to cents
+        currency: "usd",
+        duration: sessionType.duration,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        subject: "Academic Counseling",
+        topic: "General Guidance",
+        status: "pending",
       };
-      localStorage.setItem("pendingBooking", JSON.stringify(counselorData));
 
       // Clear the selected plan from localStorage since we're proceeding to payment
       localStorage.removeItem("selectedCounselingPlan");
 
-      // Redirect to payment screen with booking data as URL params
-      const params = new URLSearchParams({
-        bookingId: response.data.id,
-        counselor: selectedCounselor.id,
-        type: selectedSessionType,
-        date: selectedDateTime.date.toISOString().split("T")[0],
-        time: selectedDateTime.time,
-        notes: sessionNotes || "",
-      });
-
-      router.push(`/student/book-counselor/payment?${params.toString()}`);
+      // Show payment modal only after successful booking creation
+      setCreatedBooking(bookingData);
+      setPaymentAmountInCents(sessionPrice * 100); // Send as cents, PaymentForm will convert to dollars
+      setShowPaymentModal(true);
     } catch (error) {
       console.error("Error creating booking:", error);
       console.error("Error details:", {
         message: error.message,
-        stack: error.stack,
         response: error.response,
         request: error.request,
         config: error.config,
       });
 
-      // Provide more specific error messages
-      let errorMessage = "Failed to create booking. Please try again.";
+      // Extract message and status for friendlier UX (like tutor booking)
+      const status = error?.response?.status || error?.status;
+      const backendMsg = error?.response?.data?.message || error?.message || "";
 
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response?.status) {
-        switch (error.response.status) {
-          case 400:
-            errorMessage = "Invalid booking data. Please check your selection.";
-            break;
-          case 401:
-            errorMessage = "Please log in to create a booking.";
-            break;
-          case 403:
-            errorMessage = "You don't have permission to create this booking.";
-            break;
-          case 409:
-            errorMessage = "This time slot is no longer available.";
-            break;
-          case 422:
-            errorMessage = "Please check your booking details and try again.";
-            break;
-          case 500:
-            errorMessage = "Server error. Please try again later.";
-            break;
-          default:
-            errorMessage = `Booking failed (${error.response.status}). Please try again.`;
-        }
-      } else if (error.request) {
-        errorMessage = "Network error. Please check your connection.";
+      // Handle already booked/duplicate selection (like tutor booking)
+      if (String(status) === "400" || /already\s*book|already\s*exists|already\s*reserved|time\s*slot\s*is\s*already\s*reserved/i.test(backendMsg)) {
+        // Store this attempted slot to prevent re-selection
+        try {
+          const raw = localStorage.getItem("recentlyBookedSlots");
+          const list = raw ? JSON.parse(raw) : [];
+          list.push({
+            counselorId: selectedCounselor.id,
+            date: selectedDateTime.date.toISOString().split("T")[0],
+            value: selectedDateTime.time,
+          });
+          localStorage.setItem("recentlyBookedSlots", JSON.stringify(list.filter(Boolean)));
+        } catch (e) {}
+
+        setError("That time slot was just taken. Please choose another time.");
+        toast.error("That time slot was just taken. Please choose another time.");
+        setCurrentStep(1); // Go back to date/time picker step
+        setSelectedDateTime({ date: null, time: null }); // Clear selection
+        window.scrollTo(0, 0);
+        return;
       }
 
-      toast.error(errorMessage);
+      // Auth required
+      if (String(status) === "401") {
+        setError("Please log in to create a booking");
+        toast.error("Please log in to create a booking");
+        return;
+      }
+
+      // Map common errors to friendly copy
+      let friendly = "Booking failed. Please try again.";
+      switch (String(status)) {
+        case "400":
+          friendly = "Invalid booking data. Please check your selection.";
+          break;
+        case "403":
+          friendly = "You don't have permission to create this booking.";
+          break;
+        case "409":
+          friendly = "This time slot is no longer available. Please choose a different time.";
+          break;
+        case "422":
+          friendly = "Please check your booking details and try again.";
+          break;
+        case "500":
+          friendly = "Server error. Please try again later.";
+          break;
+        default:
+          if (backendMsg) {
+            friendly = backendMsg;
+          }
+      }
+
+      setError(friendly);
+      toast.error(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -1008,6 +1066,25 @@ export default function BookCounselorPage() {
         {/* Step Content */}
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow-lg rounded-2xl p-6 sm:p-8 border border-gray-100">
+            {/* Error Display */}
+            {error && (
+              <div className="mb-6">
+                <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <h3 className="text-lg font-semibold text-red-800">Error</h3>
+                      <p className="text-red-700 mt-1">{error}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {currentStep === 0 && (
               <div>
                 <div className="text-center mb-8">
@@ -1563,6 +1640,90 @@ export default function BookCounselorPage() {
           </div>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && createdBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-2xl p-6 relative">
+            <button
+              type="button"
+              onClick={() => setShowPaymentModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 111.414 1.415L11.414 10l4.95 4.95a1 1 0 01-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 01-1.414-1.414L8.586 10l-4.95-4.95A1 1 0 115.05 3.636L10 8.586z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Complete Your Payment</h3>
+            <PaymentStripeProvider>
+              <PaymentForm
+                bookingId={createdBooking.bookingId}
+                amount={paymentAmountInCents || 0}
+                currency={createdBooking.currency || "usd"}
+                booking={{
+                  ...createdBooking,
+                  providerName: createdBooking.counselorName,
+                  providerRole: "counselor",
+                }}
+                onSuccess={() => {
+                  setShowPaymentModal(false);
+                  // Show success popup with buttons like tutor booking
+                  setShowSuccessPopup(true);
+                  setSuccessCountdown(5);
+                  const interval = setInterval(() => {
+                    setSuccessCountdown((s) => {
+                      if (s <= 1) {
+                        clearInterval(interval);
+                        router.push('/student/my-sessions');
+                        return 0;
+                      }
+                      return s - 1;
+                    });
+                  }, 1000);
+                }}
+                onError={(error) => {
+                  console.error("Payment error:", error);
+                  toast.error("Payment failed. Please try again.");
+                }}
+                onCancel={() => {
+                  setShowPaymentModal(false);
+                }}
+              />
+            </PaymentStripeProvider>
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl p-6 text-center">
+            <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-7 h-7 text-green-600">
+                <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.25 7.25a1 1 0 01-1.42 0l-3-3a1 1 0 011.42-1.42l2.29 2.29 6.54-6.54a1 1 0 011.42 0z" clipRule="evenodd"/>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900">Payment successful</h3>
+            <p className="text-gray-600 mt-1">Redirecting to your sessions in {successCountdown}s</p>
+            <div className="mt-5 flex gap-3 justify-center">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer"
+                onClick={() => router.push('/student/book-counselor')}
+              >
+                Book another session
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 cursor-pointer"
+                onClick={() => router.push('/student/my-sessions')}
+              >
+                View sessions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
