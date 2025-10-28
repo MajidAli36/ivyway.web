@@ -1,8 +1,8 @@
 export const API_CONFIG = {
   baseURL:
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    // "https://ivyway-backend-iu4z.onrender.com/api",
-    "http://localhost:5000/api",
+     "https://ivyway-api.onrender.com",
+    //"http://localhost:5000/api",
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
