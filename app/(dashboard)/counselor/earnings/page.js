@@ -3,9 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  ArrowLeftIcon,
   CurrencyDollarIcon,
-  ChartBarIcon,
   CalendarIcon,
   ClockIcon,
   CheckCircleIcon,
@@ -13,91 +11,16 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   PlusIcon,
-  ArrowDownTrayIcon,
   DocumentTextIcon,
   BanknotesIcon,
+  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { counselorPayments, counselorBookings } from "@/app/lib/api/endpoints";
 import counselorEarningsService from "@/app/lib/api/counselorEarningsService";
 import CounselorPayoutRequestModal from "@/app/components/modals/CounselorPayoutRequestModal";
 import StripeConnectStatus from "./components/StripeConnectStatus";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Bar } from "react-chartjs-2";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
 import authService from "@/app/lib/auth/authService";
-
-// Earnings Chart Component
-const EarningsChart = ({ earningsData, timeRange }) => {
-  const [chartData, setChartData] = useState([]);
-
-  useEffect(() => {
-    if (earningsData && earningsData.length > 0) {
-      // Group earnings by date and calculate totals
-      const grouped = earningsData.reduce((acc, earning) => {
-        const date = new Date(earning.date || earning.createdAt)
-          .toISOString()
-          .split("T")[0];
-        if (!acc[date]) {
-          acc[date] = { date, amount: 0, sessions: 0 };
-        }
-        acc[date].amount += earning.amount || 0;
-        acc[date].sessions += 1;
-        return acc;
-      }, {});
-
-      const sortedData = Object.values(grouped)
-        .sort((a, b) => new Date(a.date) - new Date(b.date))
-        .slice(-7); // Last 7 days
-
-      setChartData(sortedData);
-    }
-  }, [earningsData]);
-
-  const maxAmount = Math.max(...chartData.map((d) => d.amount), 1);
-
-  return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">Earnings Trend</h3>
-      <div className="h-64 flex items-end space-x-2">
-        {chartData.map((data, index) => (
-          <div key={index} className="flex-1 flex flex-col items-center">
-            <div
-              className="bg-blue-500 rounded-t w-full transition-all duration-300 hover:bg-blue-600"
-              style={{ height: `${(data.amount / maxAmount) * 200}px` }}
-              title={`$${data.amount} - ${data.sessions} sessions`}
-            />
-            <div className="text-xs text-gray-500 mt-2 transform -rotate-45 origin-left">
-              {new Date(data.date).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 text-sm text-gray-500 text-center">
-        Last 7 days earnings
-      </div>
-    </div>
-  );
-};
 
 // Earnings Summary Component
 const EarningsSummary = ({
@@ -172,100 +95,11 @@ const EarningsSummary = ({
   );
 };
 
-// Earnings List Component
-const EarningsList = ({ earnings, loading }) => {
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-100 text-green-800";
-      case "pending":
-        return "bg-yellow-100 text-yellow-800";
-      case "cancelled":
-        return "bg-red-100 text-red-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6">
-          <div className="animate-pulse space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center space-x-4">
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h3 className="text-lg font-medium text-gray-900">Recent Earnings</h3>
-      </div>
-      <div className="divide-y divide-gray-200">
-        {earnings.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
-            No earnings data available
-          </div>
-        ) : (
-          earnings.map((earning) => (
-            <div key={earning.id} className="p-6 hover:bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0">
-                    <CurrencyDollarIcon className="h-6 w-6 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      Session with {earning.studentName || "Student"}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(earning.date || earning.createdAt)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                      earning.status
-                    )}`}
-                  >
-                    {earning.status}
-                  </span>
-                  <p className="text-lg font-semibold text-gray-900">
-                    ${earning.amount || earning.counselorEarnings || 0}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
 
 export default function CounselorEarningsPage() {
   const [earnings, setEarnings] = useState([]);
+  const [earningsHistory, setEarningsHistory] = useState([]);
+  const [payoutHistory, setPayoutHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -279,6 +113,7 @@ export default function CounselorEarningsPage() {
     lastMonthEarnings: 0,
     totalSessions: 0,
   });
+  const [activeTab, setActiveTab] = useState("earnings");
 
   // Check authentication
   useEffect(() => {
@@ -302,13 +137,15 @@ export default function CounselorEarningsPage() {
       setLoading(true);
 
       try {
-        // Fetch earnings, balance, and sessions in parallel
+        // Fetch earnings, balance, sessions, history, and payouts in parallel
         const [
           earningsResult,
           balanceResult,
           sessionsResult,
           counselorBalance,
           counselorSummary,
+          earningsHistoryResult,
+          payoutHistoryResult,
         ] = await Promise.all([
           safeApiCall(
             () =>
@@ -347,6 +184,8 @@ export default function CounselorEarningsPage() {
           // Counselor balance with cents via counselorEarningsService
           counselorEarningsService.getBalance(),
           counselorEarningsService.getEarningSummary(),
+          counselorEarningsService.getEarningHistory(),
+          counselorEarningsService.getPayoutHistory(),
         ]);
 
         const earningsData = ensureArray(
@@ -369,6 +208,10 @@ export default function CounselorEarningsPage() {
         if (counselorSummary) {
           setSummary(counselorSummary);
         }
+
+        // Set earnings and payout history
+        setEarningsHistory(earningsHistoryResult?.data || []);
+        setPayoutHistory(payoutHistoryResult?.data || []);
 
         console.log("Earnings data:", earningsData);
         console.log("Balance data:", balanceData);
@@ -499,79 +342,6 @@ export default function CounselorEarningsPage() {
     );
   }
 
-  // Chart.js options and data (match tutor layout)
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: "rgba(255, 255, 255, 0.9)",
-        titleColor: "#111827",
-        bodyColor: "#111827",
-        borderColor: "#e5e7eb",
-        borderWidth: 1,
-        padding: 12,
-        boxPadding: 6,
-        usePointStyle: true,
-        callbacks: {
-          label: function (context) {
-            return `$${context.parsed.y}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          callback: function (value) {
-            return "$" + value;
-          },
-        },
-      },
-    },
-  };
-
-  const monthlyChartData = summary
-    ? {
-        labels: (summary.monthlyEarnings || []).map((m) =>
-          new Date(m.month).toLocaleString("default", {
-            month: "short",
-            year: "2-digit",
-          })
-        ),
-        datasets: [
-          {
-            label: "Monthly Earnings ($)",
-            data: (summary.monthlyEarnings || []).map((m) => m.total),
-            backgroundColor: "rgba(59, 130, 246, 0.8)",
-            borderRadius: 4,
-          },
-        ],
-      }
-    : { labels: [], datasets: [] };
-
-  const subjectChartData = summary
-    ? {
-        labels: (summary.earningsBySubject || []).map((s) => s.subject),
-        datasets: [
-          {
-            label: "Subject Earnings ($)",
-            data: (summary.earningsBySubject || []).map((s) => s.total),
-            backgroundColor: [
-              "rgba(59, 130, 246, 0.9)",
-              "rgba(59, 130, 246, 0.8)",
-              "rgba(59, 130, 246, 0.7)",
-              "rgba(59, 130, 246, 0.6)",
-              "rgba(59, 130, 246, 0.5)",
-            ],
-            borderRadius: 4,
-          },
-        ],
-      }
-    : { labels: [], datasets: [] };
-
   const earningsStats = summary
     ? [
         {
@@ -610,12 +380,6 @@ export default function CounselorEarningsPage() {
         <div className="px-4 py-6 sm:px-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <Link
-                href="/counselor"
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600"
-              >
-                <ArrowLeftIcon className="h-6 w-6" />
-              </Link>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Earnings</h1>
                 <p className="mt-1 text-sm text-gray-500">
@@ -636,13 +400,6 @@ export default function CounselorEarningsPage() {
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Request Payout
               </button>
-              <Link
-                href="/counselor/earnings/history"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
-                View History
-              </Link>
               {/* Time Range Selector */}
               <div className="flex">
                 <select
@@ -708,39 +465,174 @@ export default function CounselorEarningsPage() {
           )}
         </div>
 
-        {/* Charts Row (match tutor layout) */}
+        {/* Earnings History */}
         <div className="px-4 py-6 sm:px-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Monthly Earnings (last 12 months)
-                </h3>
-              </div>
-              <div className="p-4 h-64">
-                {summary && monthlyChartData.datasets.length > 0 && (
-                  <Bar data={monthlyChartData} options={chartOptions} />
-                )}
-              </div>
+          <div className="bg-white rounded-lg shadow">
+            <div className="border-b border-gray-100">
+              <nav className="-mb-px flex space-x-6 px-6" aria-label="Tabs">
+                {[
+                  {
+                    name: "Earnings History",
+                    id: "earnings",
+                    count: earningsHistory.length,
+                  },
+                  {
+                    name: "Payout Requests",
+                    id: "payouts",
+                    count: payoutHistory.length,
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`
+                      whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                      ${
+                        activeTab === tab.id
+                          ? "border-blue-500 text-blue-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }
+                    `}
+                  >
+                    {tab.name}
+                    <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs">
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </nav>
             </div>
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Earnings by Subject
-                </h3>
-              </div>
-              <div className="p-4 h-64">
-                {summary && subjectChartData.datasets.length > 0 && (
-                  <Bar data={subjectChartData} options={chartOptions} />
-                )}
-              </div>
+
+            <div className="divide-y divide-gray-200">
+              {activeTab === "earnings" && (
+                <div>
+                  {earningsHistory.length === 0 ? (
+                    <div className="p-6 text-center text-gray-500">
+                      No earnings history available
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Date
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Description
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Amount
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {earningsHistory.map((earning) => (
+                            <tr key={earning.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(earning.createdAt || earning.date).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div className="flex items-center">
+                                  <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400 mr-2" />
+                                  {earning.description || earning.studentName || `Counseling Session ${earning.bookingId || earning.id}`}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                ${Number(earning.amount || earning.counselorEarnings || 0).toFixed(2)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span
+                                  className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
+                                    earning.status === "available" || earning.status === "completed"
+                                      ? "bg-green-100 text-green-800"
+                                      : earning.status === "pending"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : earning.status === "paid"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-gray-100 text-gray-800"
+                                  }`}
+                                >
+                                  {earning.status ? earning.status.charAt(0).toUpperCase() + earning.status.slice(1) : "N/A"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+              {activeTab === "payouts" && (
+                <div>
+                  {payoutHistory.length === 0 ? (
+                    <div className="p-6 text-center text-gray-500">
+                      <BanknotesIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                      <p className="text-lg font-medium text-gray-900 mb-1">No payout requests</p>
+                      <p className="text-sm">You haven't made any payout requests yet.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Requested Date
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Amount
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Processed Date
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {payoutHistory.map((payout) => (
+                            <tr key={payout.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(payout.requestedAt || payout.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                ${parseFloat(payout.amount || 0).toFixed(2)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span
+                                  className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
+                                    payout.status === "pending"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : payout.status === "approved" || payout.status === "completed"
+                                      ? "bg-green-100 text-green-800"
+                                      : payout.status === "rejected"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-gray-100 text-gray-800"
+                                  }`}
+                                >
+                                  {payout.status ? payout.status.charAt(0).toUpperCase() + payout.status.slice(1) : "N/A"}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {payout.processedAt
+                                  ? new Date(payout.processedAt).toLocaleDateString()
+                                  : "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Earnings List */}
-        <div className="px-4 py-6 sm:px-0">
-          <EarningsList earnings={earnings} loading={loading} />
         </div>
 
         {/* Payout Request Modal */}

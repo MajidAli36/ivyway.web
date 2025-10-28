@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import UpgradeEligibility from "@/app/components/tutor-upgrade/UpgradeEligibility";
 import UpgradeApplicationForm from "@/app/components/tutor-upgrade/UpgradeApplicationForm";
 import ApplicationStatus from "@/app/components/tutor-upgrade/ApplicationStatus";
@@ -146,22 +144,14 @@ export default function TutorUpgradePage() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="px-4 py-6 sm:px-0">
-          <div className="flex items-center">
-            <Link
-              href="/tutor"
-              className="mr-4 p-2 text-gray-400 hover:text-gray-600"
-            >
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Tutor Upgrade
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Upgrade to Advanced Tutor status for increased rates and
-                benefits
-              </p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Tutor Upgrade
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Upgrade to Advanced Tutor status for increased rates and
+              benefits
+            </p>
           </div>
         </div>
 

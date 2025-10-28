@@ -16,6 +16,8 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { Formik, Form, Field, FieldArray } from "formik";
+import * as Yup from "yup";
 import {
   UserIcon,
   AcademicCapIcon,
@@ -24,7 +26,6 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   CameraIcon,
-  ArrowPathIcon,
   BriefcaseIcon,
   CurrencyDollarIcon,
   DocumentCheckIcon,
@@ -34,34 +35,96 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { ENHANCED_SUBJECTS, getAllSubjects } from "@/app/constants/enhancedSubjects";
-import { analyzeProfileFields } from "@/app/utils/profileFieldAnalysis";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { useTwoFAModal } from "@/app/providers/TwoFAModalProvider";
 import { apiClient } from "@/app/lib/api/client";
 import apiClientClass from "@/app/lib/api/client";
 import TwoFAModal from "@/app/components/profile/TwoFAModal";
-import SubjectSelector from "@/app/components/shared/SubjectSelector";
 import SuccessModal from "@/app/components/shared/SuccessModal";
+import { API_CONFIG } from "@/app/lib/api/config";
 
 // Utility to get full file URL
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "https://ivyway-backend-iu4z.onrender.com/api";
 const getFullUrl = (path) => {
   if (!path) return "";
   if (path.startsWith("http")) return path;
 
   // Handle uploads path - use API route instead of direct file access
   if (path.startsWith("/uploads/")) {
-    return `${API_BASE}${path}`;
+    return `${API_CONFIG.baseURL}${path}`;
   }
 
   if (path.startsWith("/")) {
-    return `${API_BASE}${path}`;
+    return `${API_CONFIG.baseURL}${path}`;
   }
 
-  return `${API_BASE}/${path}`;
+  return `${API_CONFIG.baseURL}/${path}`;
 };
+
+// Validation schema for tutor profile
+const tutorProfileSchema = Yup.object().shape({
+  // Personal Information
+  phoneNumber: Yup.string()
+    .matches(/^[\+]?[1-9][\d]{0,15}$/, "Please enter a valid phone number")
+    .nullable(),
+  location: Yup.string()
+    .min(2, "Location must be at least 2 characters")
+    .max(100, "Location must be less than 100 characters")
+    .nullable(),
+  bio: Yup.string()
+    .min(50, "Bio must be at least 50 characters")
+    .max(1000, "Bio must be less than 1000 characters")
+    .nullable(),
+
+  // Academic Information
+  education: Yup.string()
+    .min(2, "Education level must be at least 2 characters")
+    .max(100, "Education level must be less than 100 characters")
+    .nullable(),
+  degree: Yup.string()
+    .min(2, "Degree must be at least 2 characters")
+    .max(100, "Degree must be less than 100 characters")
+    .nullable(),
+  graduationYear: Yup.string()
+    .matches(/^(19|20)\d{2}$/, "Please enter a valid graduation year (1900-2099)")
+    .nullable(),
+  experience: Yup.number()
+    .min(0, "Experience cannot be negative")
+    .max(50, "Experience cannot exceed 50 years")
+    .nullable(),
+
+  // Tutoring Information
+  subjects: Yup.array()
+    .of(Yup.string())
+    .min(1, "Please select at least one subject")
+    .max(10, "You can select up to 10 subjects"),
+  certifications: Yup.array()
+    .of(Yup.string().min(2, "Certification must be at least 2 characters"))
+    .nullable(),
+
+  // IWGSP Fields
+  isIWGSPTutor: Yup.boolean(),
+  iwgspSubjectExpertise: Yup.array()
+    .of(Yup.string().min(2, "Subject must be at least 2 characters"))
+    .nullable(),
+  iwgspLanguageFluency: Yup.array()
+    .of(Yup.string())
+    .nullable(),
+  iwgspInternationalExperience: Yup.string()
+    .max(1000, "International experience must be less than 1000 characters")
+    .nullable(),
+
+  // Profile Image
+  profileImage: Yup.mixed()
+    .nullable()
+    .test("fileSize", "File size must be less than 10MB", (value) => {
+      if (!value) return true;
+      return value.size <= 10 * 1024 * 1024;
+    })
+    .test("fileType", "Only image files are allowed", (value) => {
+      if (!value) return true;
+      return value.type.startsWith("image/");
+    }),
+});
 
 const TutorProfile = () => {
   const { user } = useAuth();
@@ -178,16 +241,8 @@ const TutorProfile = () => {
     }
   };
 
-  // Calculate profile completion using comprehensive field analysis
-  const getProfileCompletionData = () => {
-    const data = analyzeProfileFields(formData, "tutor");
-    console.log("Tutor Profile Completion Data:", data);
-    console.log("Missing Fields:", data.missingFields.map(f => f.label));
-    console.log("Completed Fields:", data.completedFields.map(f => f.label));
-    return data;
-  };
-
-  const profileCompletionData = getProfileCompletionData();
+  // Use backend profile completion instead of frontend calculation
+  const profileCompletion = formData.profileCompletion || 0;
 
   // Handle field click for navigation
   const handleFieldClick = (field) => {
@@ -263,7 +318,7 @@ const TutorProfile = () => {
 
       const formData = new FormData();
       formData.append("introVideo", videoFile);
-      const response = await fetch(`${API_BASE}/tutors/profile/intro-video`, {
+      const response = await fetch(`${API_CONFIG.baseURL}/tutors/profile/intro-video`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiClientClass.getAuthToken()}`,
@@ -391,97 +446,56 @@ const TutorProfile = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleFormSubmit = async (values, { setSubmitting, setFieldError }) => {
     setIsSaving(true);
     setError("");
 
     try {
-      // Validate required fields - only subjects field is required
-      if (!formData.subjects || formData.subjects.length === 0) {
-        setError("Subjects field is required. Please add at least one subject you teach.");
-        setIsSaving(false);
-        return;
-      }
-
-      // Validate profile image if it exists
-      if (formData.profileImage && formData.profileImage instanceof File) {
-        const allowedTypes = [
-          "image/jpeg",
-          "image/jpg",
-          "image/png",
-          "image/gif",
-          "image/webp",
-        ];
-        if (!allowedTypes.includes(formData.profileImage.type)) {
-          setError("Please select a valid image file (JPEG, PNG, GIF, WebP)");
-          setIsSaving(false);
-          return;
-        }
-
-        // Validate file size (10MB max)
-        if (formData.profileImage.size > 10 * 1024 * 1024) {
-          setError("Image file size must be less than 10MB");
-          setIsSaving(false);
-          return;
-        }
-      }
-
       // Create FormData for file upload
       const formDataToSend = new FormData();
 
       // Add all text fields
-      formDataToSend.append("phoneNumber", formData.phoneNumber);
-      formDataToSend.append("location", formData.location);
-      formDataToSend.append("bio", formData.bio);
-      formDataToSend.append("education", formData.education);
-      formDataToSend.append("degree", formData.degree);
-      formDataToSend.append("graduationYear", formData.graduationYear);
-      formDataToSend.append("experience", formData.experience);
+      formDataToSend.append("phoneNumber", values.phoneNumber || "");
+      formDataToSend.append("location", values.location || "");
+      formDataToSend.append("bio", values.bio || "");
+      formDataToSend.append("education", values.education || "");
+      formDataToSend.append("degree", values.degree || "");
+      formDataToSend.append("graduationYear", values.graduationYear || "");
+      formDataToSend.append("experience", values.experience || 0);
 
       // Handle arrays properly - append each item individually
-      if (formData.subjects && formData.subjects.length > 0) {
-        formData.subjects.forEach((subject, index) => {
+      if (values.subjects && values.subjects.length > 0) {
+        values.subjects.forEach((subject, index) => {
           formDataToSend.append(`subjects[${index}]`, subject);
         });
       }
 
-      if (formData.certifications && formData.certifications.length > 0) {
-        formData.certifications.forEach((cert, index) => {
+      if (values.certifications && values.certifications.length > 0) {
+        values.certifications.forEach((cert, index) => {
           formDataToSend.append(`certifications[${index}]`, cert);
         });
       }
 
-
-      formDataToSend.append("isIWGSPTutor", formData.isIWGSPTutor);
+      formDataToSend.append("isIWGSPTutor", values.isIWGSPTutor || false);
 
       // Handle IWGSP arrays properly
-      if (
-        formData.iwgspSubjectExpertise &&
-        formData.iwgspSubjectExpertise.length > 0
-      ) {
-        formData.iwgspSubjectExpertise.forEach((subject, index) => {
+      if (values.iwgspSubjectExpertise && values.iwgspSubjectExpertise.length > 0) {
+        values.iwgspSubjectExpertise.forEach((subject, index) => {
           formDataToSend.append(`iwgspSubjectExpertise[${index}]`, subject);
         });
       }
 
-      if (
-        formData.iwgspLanguageFluency &&
-        formData.iwgspLanguageFluency.length > 0
-      ) {
-        formData.iwgspLanguageFluency.forEach((language, index) => {
+      if (values.iwgspLanguageFluency && values.iwgspLanguageFluency.length > 0) {
+        values.iwgspLanguageFluency.forEach((language, index) => {
           formDataToSend.append(`iwgspLanguageFluency[${index}]`, language);
         });
       }
 
-      formDataToSend.append(
-        "iwgspInternationalExperience",
-        formData.iwgspInternationalExperience
-      );
+      formDataToSend.append("iwgspInternationalExperience", values.iwgspInternationalExperience || "");
 
       // Add the profile image if it exists and is a File object
-      if (formData.profileImage && formData.profileImage instanceof File) {
-        formDataToSend.append("profileImage", formData.profileImage);
+      if (values.profileImage && values.profileImage instanceof File) {
+        formDataToSend.append("profileImage", values.profileImage);
       }
 
       // Get auth token
@@ -491,7 +505,7 @@ const TutorProfile = () => {
       }
 
       // Make the request with FormData
-      const response = await fetch(`${API_BASE}/tutors/profile`, {
+      const response = await fetch(`${API_CONFIG.baseURL}/tutors/profile`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -523,6 +537,7 @@ const TutorProfile = () => {
       setError(err.message || "Failed to update profile");
     } finally {
       setIsSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -541,8 +556,6 @@ const TutorProfile = () => {
     }
   };
 
-  const profileCompletion = profileCompletionData.percentage;
-  const missingFields = profileCompletionData.missingFields.map(field => field.label);
 
   if (isLoading) {
     return (
@@ -581,16 +594,6 @@ const TutorProfile = () => {
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              <button
-                onClick={loadProfile}
-                disabled={isLoading}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
-              >
-                <ArrowPathIcon
-                  className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
-                />
-                Refresh
-              </button>
               {!isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
@@ -614,7 +617,7 @@ const TutorProfile = () => {
           </div>
         )}
 
-        {/* Profile Completion Indicator - Matching Student Design */}
+        {/* Profile Completion Indicator */}
         <div className="mb-6 bg-white shadow rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">
@@ -632,25 +635,27 @@ const TutorProfile = () => {
             ></div>
           </div>
 
-          {missingFields.length > 0 && (
+          {profileCompletion < 100 && (
             <div>
-              <p className="text-sm text-gray-600 mb-2">Missing information:</p>
-              <div className="flex flex-wrap gap-2">
-                {missingFields.map((field, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                  >
-                    {field}
-                  </span>
-                ))}
-              </div>
+              <p className="text-sm text-gray-600 mb-2">
+                Complete your profile to get more students and better visibility.
+              </p>
+              <p className="text-xs text-gray-500">
+                Add missing information to increase your profile completion percentage.
+              </p>
             </div>
           )}
         </div>
 
         {/* Main Form */}
-        <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg">
+        <Formik
+          initialValues={formData}
+          validationSchema={tutorProfileSchema}
+          onSubmit={handleFormSubmit}
+          enableReinitialize={true}
+        >
+          {({ values, errors, touched, setFieldValue, isSubmitting }) => (
+            <Form className="bg-white shadow rounded-lg">
           <div className="p-8">
             {/* Profile Photo Section */}
             <div id="profileImageUrl" className="mb-8">
@@ -827,30 +832,40 @@ const TutorProfile = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Phone Number
                   </label>
-                  <input
+                  <Field
                     type="tel"
-                    value={formData.phoneNumber}
-                    onChange={(e) =>
-                      handleInputChange("phoneNumber", e.target.value)
-                    }
+                    name="phoneNumber"
+                    placeholder="Enter your phone number (e.g., +1234567890)"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.phoneNumber && touched.phoneNumber
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.phoneNumber && touched.phoneNumber && (
+                    <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Location
                   </label>
-                  <input
+                  <Field
                     type="text"
-                    value={formData.location}
-                    onChange={(e) =>
-                      handleInputChange("location", e.target.value)
-                    }
+                    name="location"
+                    placeholder="Enter your city, state, or country"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.location && touched.location
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.location && touched.location && (
+                    <p className="mt-1 text-sm text-red-600">{errors.location}</p>
+                  )}
                 </div>
               </div>
 
@@ -858,14 +873,21 @@ const TutorProfile = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Bio
                 </label>
-                <textarea
-                  value={formData.bio}
-                  onChange={(e) => handleInputChange("bio", e.target.value)}
-                  disabled={!isEditing}
+                <Field
+                  as="textarea"
+                  name="bio"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  placeholder="Tell students about yourself and your teaching approach..."
+                  disabled={!isEditing}
+                  placeholder="Tell students about yourself and your teaching approach. Describe your experience, teaching style, and what makes you unique as a tutor..."
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                    errors.bio && touched.bio
+                      ? "border-red-300"
+                      : "border-gray-300"
+                  }`}
                 />
+                {errors.bio && touched.bio && (
+                  <p className="mt-1 text-sm text-red-600">{errors.bio}</p>
+                )}
               </div>
             </div>
 
@@ -883,65 +905,82 @@ const TutorProfile = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Highest Education Level
                   </label>
-                  <input
+                  <Field
                     type="text"
-                    value={formData.education}
-                    onChange={(e) =>
-                      handleInputChange("education", e.target.value)
-                    }
+                    name="education"
+                    placeholder="e.g., Bachelor's Degree, Master's Degree, PhD"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.education && touched.education
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.education && touched.education && (
+                    <p className="mt-1 text-sm text-red-600">{errors.education}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Degree
                   </label>
-                  <input
+                  <Field
                     type="text"
-                    value={formData.degree}
-                    onChange={(e) =>
-                      handleInputChange("degree", e.target.value)
-                    }
+                    name="degree"
+                    placeholder="e.g., Computer Science, Mathematics, Physics"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.degree && touched.degree
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.degree && touched.degree && (
+                    <p className="mt-1 text-sm text-red-600">{errors.degree}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Graduation Year
                   </label>
-                  <input
+                  <Field
                     type="text"
-                    value={formData.graduationYear}
-                    onChange={(e) =>
-                      handleInputChange("graduationYear", e.target.value)
-                    }
+                    name="graduationYear"
+                    placeholder="e.g., 2020, 2021, 2022"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.graduationYear && touched.graduationYear
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.graduationYear && touched.graduationYear && (
+                    <p className="mt-1 text-sm text-red-600">{errors.graduationYear}</p>
+                  )}
                 </div>
 
                 <div id="experience">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Experience (Years)
                   </label>
-                  <input
+                  <Field
                     type="number"
+                    name="experience"
                     min="0"
                     max="50"
-                    value={formData.experience}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "experience",
-                        parseInt(e.target.value) || 0
-                      )
-                    }
+                    placeholder="0"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.experience && touched.experience
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.experience && touched.experience && (
+                    <p className="mt-1 text-sm text-red-600">{errors.experience}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -956,16 +995,75 @@ const TutorProfile = () => {
               </div>
 
               <div id="subjects">
-                <SubjectSelector
-                  selectedSubjects={formData.subjects}
-                  onSubjectsChange={(subjects) =>
-                    setFormData((prev) => ({ ...prev, subjects }))
-                  }
-                  isEditing={isEditing}
-                  label="Subjects You Teach"
-                  placeholder="Search and select subjects..."
-                  maxSubjects={10}
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Subjects You Teach *
+                </label>
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      {getAllSubjects().map((subject) => (
+                        <label key={subject} className={`flex items-center space-x-3 cursor-pointer p-3 rounded-lg border transition-all duration-200 ${
+                          values.subjects?.includes(subject) 
+                            ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' 
+                            : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={values.subjects?.includes(subject) || false}
+                            onChange={(e) => {
+                              const currentSubjects = values.subjects || [];
+                              if (e.target.checked) {
+                                if (currentSubjects.length < 10) {
+                                  setFieldValue("subjects", [...currentSubjects, subject]);
+                                }
+                              } else {
+                                setFieldValue("subjects", currentSubjects.filter(s => s !== subject));
+                              }
+                            }}
+                            disabled={!values.subjects?.includes(subject) && values.subjects?.length >= 10}
+                            className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50 accent-blue-600 checked:bg-blue-600 checked:border-blue-600"
+                            style={{ accentColor: '#2563eb' }}
+                          />
+                          <span className={`text-sm font-medium truncate transition-colors duration-200 ${
+                            values.subjects?.includes(subject) 
+                              ? 'text-blue-700' 
+                              : 'text-gray-700'
+                          }`} title={subject}>
+                            {subject}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600 font-medium">
+                        {values.subjects?.length || 0}/10 subjects selected
+                      </span>
+                      {values.subjects?.length >= 10 && (
+                        <span className="text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded">
+                          Maximum subjects reached
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {values.subjects && values.subjects.length > 0 ? (
+                      values.subjects.map((subject, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                        >
+                          {subject}
+                        </span>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 italic">No subjects selected</p>
+                    )}
+                  </div>
+                )}
+                {errors.subjects && touched.subjects && (
+                  <p className="mt-1 text-sm text-red-600">{errors.subjects}</p>
+                )}
               </div>
 
               <div id="certifications" className="mt-6">
@@ -973,58 +1071,46 @@ const TutorProfile = () => {
                   Certifications
                 </label>
                 {isEditing ? (
-                  <div className="space-y-2">
-                    {formData.certifications.map((cert, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                          value={cert}
-                          onChange={(e) => {
-                            const newCerts = [...formData.certifications];
-                            newCerts[index] = e.target.value;
-                            setFormData((prev) => ({
-                              ...prev,
-                              certifications: newCerts,
-                            }));
-                          }}
-                          placeholder="e.g., Teaching Certificate"
-                        />
+                  <FieldArray name="certifications">
+                    {({ push, remove }) => (
+                      <div className="space-y-2">
+                        {values.certifications?.map((cert, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <Field
+                              type="text"
+                              name={`certifications.${index}`}
+                              className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                errors.certifications?.[index] ? "border-red-300" : "border-gray-300"
+                              }`}
+                              placeholder="e.g., Teaching Certificate, Professional License"
+                            />
+                            <button
+                              type="button"
+                              className="text-red-500 hover:text-red-700 p-1"
+                              onClick={() => remove(index)}
+                            >
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ))}
                         <button
                           type="button"
-                          className="text-red-500 hover:text-red-700 p-1"
-                          onClick={() => {
-                            const newCerts = formData.certifications.filter(
-                              (_, i) => i !== index
-                            );
-                            setFormData((prev) => ({
-                              ...prev,
-                              certifications: newCerts,
-                            }));
-                          }}
+                          className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
+                          onClick={() => push("")}
                         >
-                          <XMarkIcon className="h-5 w-5" />
+                          <PlusIcon className="h-5 w-5" />
+                          Add Certification
                         </button>
+                        {errors.certifications && typeof errors.certifications === 'string' && (
+                          <p className="text-sm text-red-600">{errors.certifications}</p>
+                        )}
                       </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                      onClick={() => {
-                        setFormData((prev) => ({
-                          ...prev,
-                          certifications: [...prev.certifications, ""],
-                        }));
-                      }}
-                    >
-                      <PlusIcon className="h-5 w-5" />
-                      Add Certification
-                    </button>
-                  </div>
+                    )}
+                  </FieldArray>
                 ) : (
                   <div className="space-y-2">
-                    {formData.certifications.length > 0 ? (
-                      formData.certifications.map((cert, index) => (
+                    {values.certifications && values.certifications.length > 0 ? (
+                      values.certifications.map((cert, index) => (
                         <div
                           key={index}
                           className="flex items-center text-gray-600"
@@ -1052,110 +1138,79 @@ const TutorProfile = () => {
                 </h2>
               </div>
 
-              <div className="flex items-center mb-4">
-                <input
+              <div className="flex items-center mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <Field
                   id="isIWGSPTutor"
                   name="isIWGSPTutor"
                   type="checkbox"
-                  checked={formData.isIWGSPTutor}
-                  onChange={(e) =>
-                    handleInputChange("isIWGSPTutor", e.target.checked)
-                  }
                   disabled={!isEditing}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                  className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50 accent-blue-600 checked:bg-blue-600 checked:border-blue-600"
+                  style={{ accentColor: '#2563eb' }}
                 />
                 <label
                   htmlFor="isIWGSPTutor"
-                  className="ml-2 block text-sm text-gray-700 font-medium"
+                  className="ml-3 block text-sm text-gray-700 font-medium cursor-pointer"
                 >
                   I want to be an IWGSP Tutor
                 </label>
               </div>
 
-              {formData.isIWGSPTutor && (
+              {values.isIWGSPTutor && (
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       IWGSP Subject Expertise
                     </label>
                     {isEditing ? (
-                      <div className="space-y-2">
-                        {formData.iwgspSubjectExpertise.map(
-                          (subject, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center gap-2"
+                      <FieldArray name="iwgspSubjectExpertise">
+                        {({ push, remove }) => (
+                          <div className="space-y-2">
+                            {values.iwgspSubjectExpertise?.map((subject, index) => (
+                              <div key={index} className="flex items-center gap-2">
+                                <Field
+                                  type="text"
+                                  name={`iwgspSubjectExpertise.${index}`}
+                                  className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                    errors.iwgspSubjectExpertise?.[index] ? "border-red-300" : "border-gray-300"
+                                  }`}
+                                  placeholder="e.g., Mathematics, Computer Science, Physics"
+                                />
+                                <button
+                                  type="button"
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  onClick={() => remove(index)}
+                                >
+                                  <XMarkIcon className="h-5 w-5" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
+                              onClick={() => push("")}
                             >
-                              <input
-                                type="text"
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                value={subject}
-                                onChange={(e) => {
-                                  const newSubjects = [
-                                    ...formData.iwgspSubjectExpertise,
-                                  ];
-                                  newSubjects[index] = e.target.value;
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    iwgspSubjectExpertise: newSubjects,
-                                  }));
-                                }}
-                                placeholder="e.g., Mathematics, Computer Science"
-                              />
-                              <button
-                                type="button"
-                                className="text-red-500 hover:text-red-700 p-1"
-                                onClick={() => {
-                                  const newSubjects =
-                                    formData.iwgspSubjectExpertise.filter(
-                                      (_, i) => i !== index
-                                    );
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    iwgspSubjectExpertise: newSubjects,
-                                  }));
-                                }}
-                              >
-                                <XMarkIcon className="h-5 w-5" />
-                              </button>
-                            </div>
-                          )
+                              <PlusIcon className="h-5 w-5" />
+                              Add Subject
+                            </button>
+                            {errors.iwgspSubjectExpertise && typeof errors.iwgspSubjectExpertise === 'string' && (
+                              <p className="text-sm text-red-600">{errors.iwgspSubjectExpertise}</p>
+                            )}
+                          </div>
                         )}
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                          onClick={() => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              iwgspSubjectExpertise: [
-                                ...prev.iwgspSubjectExpertise,
-                                "",
-                              ],
-                            }));
-                          }}
-                        >
-                          <PlusIcon className="h-5 w-5" />
-                          Add Subject
-                        </button>
-                      </div>
+                      </FieldArray>
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {formData.iwgspSubjectExpertise &&
-                        formData.iwgspSubjectExpertise.length > 0 ? (
-                          formData.iwgspSubjectExpertise.map(
-                            (subject, index) => (
-                              <span
-                                key={index}
-                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
-                              >
-                                {subject}
-                              </span>
-                            )
-                          )
+                        {values.iwgspSubjectExpertise && values.iwgspSubjectExpertise.length > 0 ? (
+                          values.iwgspSubjectExpertise.map((subject, index) => (
+                            <span
+                              key={index}
+                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm"
+                            >
+                              {subject}
+                            </span>
+                          ))
                         ) : (
-                          <p className="text-gray-500 italic">
-                            No subjects specified
-                          </p>
+                          <p className="text-gray-500 italic">No subjects specified</p>
                         )}
                       </div>
                     )}
@@ -1165,7 +1220,7 @@ const TutorProfile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       IWGSP Language Fluency
                     </label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
                       {[
                         "English",
                         "Spanish",
@@ -1176,22 +1231,24 @@ const TutorProfile = () => {
                         "German",
                         "Other",
                       ].map((language) => (
-                        <label key={language} className="flex items-center">
-                          <input
+                        <label key={language} className={`flex items-center space-x-3 cursor-pointer p-2 rounded-lg transition-all duration-200 ${
+                          values.iwgspLanguageFluency?.includes(language) 
+                            ? 'bg-blue-50 border border-blue-200 hover:bg-blue-100' 
+                            : 'bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                        }`}>
+                          <Field
                             type="checkbox"
-                            checked={formData.iwgspLanguageFluency.includes(
-                              language
-                            )}
-                            onChange={() =>
-                              handleArrayChange(
-                                "iwgspLanguageFluency",
-                                language
-                              )
-                            }
+                            name="iwgspLanguageFluency"
+                            value={language}
                             disabled={!isEditing}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                            className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50 accent-blue-600 checked:bg-blue-600 checked:border-blue-600"
+                            style={{ accentColor: '#2563eb' }}
                           />
-                          <span className="ml-2 text-sm text-gray-700">
+                          <span className={`text-sm font-medium transition-colors duration-200 ${
+                            values.iwgspLanguageFluency?.includes(language) 
+                              ? 'text-blue-700' 
+                              : 'text-gray-700'
+                          }`}>
                             {language}
                           </span>
                         </label>
@@ -1203,19 +1260,21 @@ const TutorProfile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       IWGSP International Student Experience
                     </label>
-                    <textarea
-                      value={formData.iwgspInternationalExperience}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "iwgspInternationalExperience",
-                          e.target.value
-                        )
-                      }
-                      disabled={!isEditing}
+                    <Field
+                      as="textarea"
+                      name="iwgspInternationalExperience"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                      placeholder="Describe your experience working with international students..."
+                      disabled={!isEditing}
+                      placeholder="Describe your experience working with international students. Include any specific challenges you've helped them overcome, cultural sensitivity, and success stories..."
+                      className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                        errors.iwgspInternationalExperience && touched.iwgspInternationalExperience
+                          ? "border-red-300"
+                          : "border-gray-300"
+                      }`}
                     />
+                    {errors.iwgspInternationalExperience && touched.iwgspInternationalExperience && (
+                      <p className="mt-1 text-sm text-red-600">{errors.iwgspInternationalExperience}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1327,28 +1386,30 @@ const TutorProfile = () => {
             </div>
           </div>
 
-          {/* Form Actions */}
-          {isEditing && (
-            <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </div>
+              {/* Form Actions */}
+              {isEditing && (
+                <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || isSaving}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting || isSaving ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Form>
           )}
-        </form>
+        </Formik>
 
         <TwoFAModal />
         <SuccessModal 

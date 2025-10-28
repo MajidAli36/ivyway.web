@@ -35,10 +35,13 @@ export default function AuthProvider({ children, showLoading = false }) {
       }
     } catch (error) {
       console.error("Failed to refresh user data:", error);
-      // Optional: handle error, e.g., logout user if session is invalid
-      if (error.response && error.response.status === 401) {
-        logout();
+      // Handle session expiration gracefully
+      if (error.status === 401 || (error.response && error.response.status === 401)) {
+        // Don't automatically logout, let the session expired modal handle it
+        console.log("Session expired during user refresh");
+        return;
       }
+      throw error;
     }
   };
 
@@ -57,28 +60,40 @@ export default function AuthProvider({ children, showLoading = false }) {
   };
 
   const logout = () => {
-    // Clear all authentication tokens
+    // Clear all authentication tokens and data
+    localStorage.removeItem("jwt_token");
+    localStorage.removeItem("user");
     localStorage.removeItem("token");
     localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
     localStorage.removeItem("role");
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("refreshToken");
     sessionStorage.removeItem("user");
     sessionStorage.removeItem("role");
 
+    // Clear any other auth-related data
+    localStorage.removeItem("selectedPlan");
+    localStorage.removeItem("selectedCounselingPlan");
+    localStorage.removeItem("pendingBooking");
+    localStorage.removeItem("selectedService");
+    localStorage.removeItem("recentlyBookedSlots");
+
     // Clear cookies if used
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
+    if (typeof document !== "undefined") {
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    }
 
     // Reset auth state
     setUser(null);
 
     // Force a page reload to clear any remaining state
-    window.location.href = "/";
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
   };
 
   const resetPassword = async (email) => {

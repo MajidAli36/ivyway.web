@@ -9,48 +9,87 @@ import {
   ClockIcon,
   QuestionMarkCircleIcon,
   CalendarIcon,
-  AcademicCapIcon,
   XMarkIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
 import { authService } from "@/app/lib/auth/authService";
 import apiClient from "@/app/lib/api/client";
 
-// Request Status Badge Component
+// Request Status Badge Component with updated styling
 function StatusBadge({ status }) {
-  let bgColor = "bg-gray-100";
-  let textColor = "text-gray-800";
+  let bgColor = "bg-gray-50";
+  let textColor = "text-gray-700";
+  let borderColor = "border-gray-200";
   let icon = <QuestionMarkCircleIcon className="h-4 w-4 mr-1" />;
 
   switch (status.toLowerCase()) {
     case "pending":
-      bgColor = "bg-yellow-100";
-      textColor = "text-yellow-800";
+      bgColor = "bg-amber-50";
+      textColor = "text-amber-700";
+      borderColor = "border-amber-200";
       icon = <ClockIcon className="h-4 w-4 mr-1" />;
       break;
     case "confirmed":
     case "completed":
-      bgColor = "bg-green-100";
-      textColor = "text-green-800";
+      bgColor = "bg-blue-50";
+      textColor = "text-blue-500";
+      borderColor = "border-blue-200";
       icon = <CheckCircleIcon className="h-4 w-4 mr-1" />;
       break;
     case "declined":
     case "cancelled":
-      bgColor = "bg-red-100";
-      textColor = "text-red-800";
+      bgColor = "bg-red-50";
+      textColor = "text-red-700";
+      borderColor = "border-red-200";
       icon = <XCircleIcon className="h-4 w-4 mr-1" />;
       break;
   }
 
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${bgColor} ${textColor}`}
+      className={`px-3 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${bgColor} ${textColor} ${borderColor} border`}
     >
       {icon}
       {status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}
     </span>
   );
 }
+
+// Filter tabs component matching sessions screen style
+const FilterTabs = ({ filter, setFilter, counts }) => {
+  const tabs = [
+    { key: "all", label: "All Requests" },
+    { key: "pending", label: "Pending" },
+    { key: "confirmed", label: "Confirmed" },
+    { key: "declined", label: "Declined" },
+  ];
+
+  return (
+    <div className="border-b border-gray-200">
+      <nav className="flex px-4 space-x-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            className={`
+              whitespace-nowrap py-4 px-4 font-medium text-sm rounded-t-lg transition-colors
+              ${
+                filter === tab.key
+                  ? "text-blue-500 border-b-2 border-blue-500"
+                  : "text-[#6b7280] hover:text-blue-500 hover:bg-blue-50/20"
+              }
+            `}
+            onClick={() => setFilter(tab.key)}
+          >
+            {tab.label}
+            <span className="ml-2 py-0.5 px-2 text-xs rounded-full bg-gray-100 text-[#6b7280]">
+              {counts[tab.key]}
+            </span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+};
 
 // Request Card Component
 function RequestCard({ request, onAccept, onReject }) {
@@ -153,49 +192,43 @@ function RequestCard({ request, onAccept, onReject }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-lg transition-shadow">
       <div className="p-6">
         <div className="flex justify-between items-start">
           <div className="flex items-start">
-            <div className="h-12 w-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-center text-white font-semibold">
               {request.studentName
                 .split(" ")
                 .map((n) => n[0])
                 .join("")}
             </div>
-            <div className="ml-3">
-              <h3 className="text-lg font-medium text-gray-900">
+            <div className="ml-4">
+              <div className="text-sm font-medium text-[#334e68]">
                 {request.studentName}
-              </h3>
-              <p className="text-sm text-gray-500">
+              </div>
+              <div className="text-sm text-[#6b7280]">
                 {formatDate(request.createdAt)}
-              </p>
+              </div>
             </div>
           </div>
           <StatusBadge status={request.status} />
         </div>
 
         <div className="mt-4">
-          <h4 className="text-sm font-medium text-gray-900">
+          <h4 className="text-sm font-medium text-[#334e68]">
             {request.sessionType.charAt(0).toUpperCase() +
               request.sessionType.slice(1)}{" "}
             Session Request
           </h4>
-          <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+          <p className="mt-1 text-sm text-[#6b7280] line-clamp-2">
             {request.notes || "No additional notes provided"}
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-4 text-sm text-gray-500">
-          <div className="flex items-center">
-            <CalendarIcon className="h-4 w-4 mr-1.5 text-gray-400" />
-            {formatDate(request.startTime)} {formatTime(request.startTime)} -{" "}
-            {formatTime(request.endTime)}
-          </div>
-          <div className="flex items-center">
-            <AcademicCapIcon className="h-4 w-4 mr-1.5 text-gray-400" />
-            {request.sessionType.charAt(0).toUpperCase() +
-              request.sessionType.slice(1)}
+        <div className="mt-4 text-sm text-[#6b7280]">
+          <div className="flex items-center whitespace-nowrap">
+            <CalendarIcon className="h-4 w-4 mr-1.5 text-[#9ca3af] flex-shrink-0" />
+            <span className="truncate">{formatTime(request.startTime)} - {formatTime(request.endTime)}</span>
           </div>
         </div>
 
@@ -205,7 +238,7 @@ function RequestCard({ request, onAccept, onReject }) {
             <button
               onClick={handleReject}
               disabled={isRejecting || isAccepting}
-              className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+              className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <XMarkIcon className="h-4 w-4 mr-1" />
               {isRejecting ? "Rejecting…" : "Reject"}
@@ -213,7 +246,7 @@ function RequestCard({ request, onAccept, onReject }) {
             <button
               onClick={handleAccept}
               disabled={isAccepting || isRejecting}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <CheckIcon className="h-4 w-4 mr-1" />
               {isAccepting ? "Accepting…" : "Accept"}
@@ -225,9 +258,22 @@ function RequestCard({ request, onAccept, onReject }) {
   );
 }
 
+// Empty state component matching sessions screen style
+const EmptyState = ({ filter }) => (
+  <div className="py-20 text-center">
+    <div className="mx-auto w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+      <InboxIcon className="h-10 w-10 text-[#9ca3af]" />
+    </div>
+    <h3 className="text-lg font-medium text-[#243b53]">No requests found</h3>
+    <p className="mt-1 text-[#6b7280]">
+      There are no {filter !== "all" ? filter : ""} requests to display.
+    </p>
+  </div>
+);
+
 // Main component
 export default function StudentRequestsPage() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState("all");
   const [requestsData, setRequestsData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -289,8 +335,9 @@ export default function StudentRequestsPage() {
     }
   }, [isAuthenticated]);
 
-  // Filtering & counts
+  // Filtering & counts matching sessions screen logic
   const filtered = requestsData.filter((r) => {
+    if (activeTab === "all") return true;
     if (activeTab === "pending") return r.status === "pending";
     if (activeTab === "confirmed") return r.status === "confirmed";
     if (activeTab === "declined")
@@ -299,12 +346,12 @@ export default function StudentRequestsPage() {
   });
 
   const counts = {
+    all: requestsData.length,
     pending: requestsData.filter((r) => r.status === "pending").length,
     confirmed: requestsData.filter((r) => r.status === "confirmed").length,
     declined: requestsData.filter(
       (r) => r.status === "declined" || r.status === "cancelled"
     ).length,
-    all: requestsData.length,
   };
 
   const handleAccept = (id, newStatus, cancellationReason) => {
@@ -325,112 +372,78 @@ export default function StudentRequestsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-[#243b53]">Student Requests</h1>
+          <p className="mt-1 text-[#6b7280]">
+            View and respond to session requests
+          </p>
+        </div>
+        <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl p-10 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your requests...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <div className="flex">
-          <XCircleIcon className="h-5 w-5 text-red-400" />
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">{error}</h3>
-            <p className="mt-2 text-sm text-red-700">
-              Please refresh or sign in again.
-            </p>
-            {error.includes("sign in") && (
-              <button
-                onClick={() => (window.location.href = "/login")}
-                className="mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Go to Login
-              </button>
-            )}
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-[#243b53]">Student Requests</h1>
+          <p className="mt-1 text-[#6b7280]">
+            View and respond to session requests
+          </p>
+        </div>
+        <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl p-10 text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+            <XCircleIcon className="h-8 w-8 text-red-500" />
           </div>
+          <h3 className="text-lg font-medium text-red-700 mb-2">{error}</h3>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-4 py-2 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6">
       <Toaster position="top-right" />
-
-      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Student Requests</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-3xl font-bold text-[#243b53]">Student Requests</h1>
+        <p className="mt-1 text-[#6b7280]">
           View and respond to session requests
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { key: "pending", name: "Pending", count: counts.pending },
-            { key: "confirmed", name: "Confirmed", count: counts.confirmed },
-            { key: "declined", name: "Declined", count: counts.declined },
-            { key: "all", name: "All", count: counts.all },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              className={`${
-                activeTab === tab.key
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.name}{" "}
-              {tab.count > 0 && (
-                <span
-                  className={`${
-                    activeTab === tab.key
-                      ? "bg-blue-100 text-blue-600"
-                      : "bg-gray-100 text-gray-900"
-                  } ml-2 py-0.5 px-2.5 rounded-full text-xs font-medium`}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl overflow-hidden">
+        {/* Filter tabs */}
+        <FilterTabs filter={activeTab} setFilter={setActiveTab} counts={counts} />
 
-      {/* Cards */}
-      {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filtered.map((r) => (
-            <RequestCard
-              key={r.id}
-              request={r}
-              onAccept={handleAccept}
-              onReject={handleReject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12 bg-white rounded-xl shadow">
-          <InboxIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">
-            No {activeTab !== "all" ? activeTab : ""} requests
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {activeTab === "pending"
-              ? "No pending requests."
-              : activeTab === "confirmed"
-              ? "No confirmed requests."
-              : activeTab === "declined"
-              ? "No declined requests."
-              : "No requests at all."}
-          </p>
-        </div>
-      )}
+        {/* Requests content */}
+        {filtered.length === 0 ? (
+          <EmptyState filter={activeTab} />
+        ) : (
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filtered.map((r) => (
+                <RequestCard
+                  key={r.id}
+                  request={r}
+                  onAccept={handleAccept}
+                  onReject={handleReject}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

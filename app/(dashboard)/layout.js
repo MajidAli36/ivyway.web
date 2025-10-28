@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import "../(site)/globals.css";
 import Providers from "../providers";
+import SessionExpiredModal from "../components/SessionExpiredModal";
 // import ChatWidget from "./components/ai-chat/ChatWidget";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -17,6 +18,7 @@ export default function RootLayout({ children }) {
       <body className={inter.className} suppressHydrationWarning>
         <Providers>
           {children}
+          <SessionExpiredModal />
           {/* <ChatWidget /> */}
         </Providers>
       </body>

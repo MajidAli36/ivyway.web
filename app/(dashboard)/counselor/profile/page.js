@@ -1,19 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Link from "next/link";
+import { Formik, Form, Field, FieldArray } from "formik";
+import * as Yup from "yup";
 import {
   UserIcon,
   AcademicCapIcon,
-  ClockIcon,
   VideoCameraIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   CameraIcon,
   ArrowPathIcon,
-  ArrowLeftIcon,
-  BriefcaseIcon,
-  CurrencyDollarIcon,
   DocumentCheckIcon,
   LanguageIcon,
   PlusIcon,
@@ -23,28 +20,96 @@ import { useTwoFAModal } from "@/app/providers/TwoFAModalProvider";
 import { apiClient } from "@/app/lib/api/client";
 import counselorProfileService from "@/app/lib/api/counselorProfile";
 import TwoFAModal from "@/app/components/profile/TwoFAModal";
-import StripeConnectStatus from "./components/StripeConnectStatus";
 import SuccessModal from "@/app/components/shared/SuccessModal";
 
+import { API_CONFIG } from "@/app/lib/api/config";
+
 // Utility to get full file URL
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "https://ivyway-backend-iu4z.onrender.com/api";
 const getFullUrl = (path) => {
   if (!path) return "";
   if (path.startsWith("http")) return path;
 
   // Handle uploads path - use API route instead of direct file access
   if (path.startsWith("/uploads/")) {
-    return `${API_BASE}${path}`;
+    return `${API_CONFIG.baseURL}${path}`;
   }
 
   if (path.startsWith("/")) {
-    return `${API_BASE}${path}`;
+    return `${API_CONFIG.baseURL}${path}`;
   }
 
-  return `${API_BASE}/${path}`;
+  return `${API_CONFIG.baseURL}/${path}`;
 };
+
+// Validation schema for counselor profile
+const counselorProfileSchema = Yup.object().shape({
+  // Personal Information
+  bio: Yup.string()
+    .min(50, "Bio must be at least 50 characters")
+    .max(1000, "Bio must be less than 1000 characters")
+    .required("Bio is required"),
+
+  // Professional Information
+  specialization: Yup.string()
+    .min(2, "Specialization must be at least 2 characters")
+    .max(100, "Specialization must be less than 100 characters")
+    .required("Specialization is required"),
+  experience: Yup.number()
+    .min(0, "Experience cannot be negative")
+    .max(50, "Experience cannot exceed 50 years")
+    .required("Experience is required"),
+  hourlyRate: Yup.number()
+    .min(0, "Hourly rate cannot be negative")
+    .max(1000, "Hourly rate cannot exceed $1000")
+    .required("Hourly rate is required"),
+
+  // Education (array of objects)
+  education: Yup.array()
+    .of(
+      Yup.object().shape({
+        institution: Yup.string()
+          .min(2, "Institution name must be at least 2 characters")
+          .max(200, "Institution name must be less than 200 characters")
+          .required("Institution is required"),
+        degree: Yup.string()
+          .min(2, "Degree must be at least 2 characters")
+          .max(100, "Degree must be less than 100 characters")
+          .required("Degree is required"),
+        fieldOfStudy: Yup.string()
+          .min(2, "Field of study must be at least 2 characters")
+          .max(100, "Field of study must be less than 100 characters")
+          .required("Field of study is required"),
+        graduationYear: Yup.string()
+          .matches(/^(19|20)\d{2}$/, "Please enter a valid graduation year (1900-2099)")
+          .required("Graduation year is required"),
+      })
+    )
+    .min(1, "Please add at least one education entry")
+    .required("Education is required"),
+
+  // Certifications (array of strings)
+  certifications: Yup.array()
+    .of(Yup.string().min(2, "Certification must be at least 2 characters"))
+    .nullable(),
+
+  // Languages (array of strings)
+  languages: Yup.array()
+    .of(Yup.string().min(2, "Language must be at least 2 characters"))
+    .min(1, "Please add at least one language")
+    .required("Languages are required"),
+
+  // Profile Image
+  profileImage: Yup.mixed()
+    .nullable()
+    .test("fileSize", "File size must be less than 10MB", (value) => {
+      if (!value) return true;
+      return value.size <= 10 * 1024 * 1024;
+    })
+    .test("fileType", "Only image files are allowed", (value) => {
+      if (!value) return true;
+      return value.type.startsWith("image/");
+    }),
+});
 
 const CounselorProfile = () => {
   const [formData, setFormData] = useState({
@@ -410,21 +475,20 @@ const CounselorProfile = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleFormSubmit = async (values, { setSubmitting, setFieldError }) => {
     setIsSaving(true);
     setError("");
 
     try {
       const profileData = {
-        bio: formData.bio,
-        specialization: formData.specialization,
-        education: formData.education,
-        experience: formData.experience,
-        certifications: formData.certifications,
-        languages: formData.languages,
-        hourlyRate: formData.hourlyRate,
-        profileImage: formData.profileImage,
+        bio: values.bio,
+        specialization: values.specialization,
+        education: values.education,
+        experience: values.experience,
+        certifications: values.certifications,
+        languages: values.languages,
+        hourlyRate: values.hourlyRate,
+        profileImage: values.profileImage,
       };
 
       const response = await counselorProfileService.createOrUpdateProfile(
@@ -447,6 +511,7 @@ const CounselorProfile = () => {
       setError(err.message || "Failed to update profile");
     } finally {
       setIsSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -497,25 +562,17 @@ const CounselorProfile = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header - aligned with Availability */}
-        <div className="mb-6">
-          <div className="flex items-center">
-            <Link href="/counselor" className="mr-4 p-2 text-gray-400 hover:text-gray-600">
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900">Counselor Profile</h1>
-              <p className="mt-1 text-sm text-gray-500">Manage your profile information and counseling expertise</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Stripe Connect Status */}
-        <StripeConnectStatus />
-
+        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            <div></div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Counselor Profile
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Manage your profile information and counseling expertise
+              </p>
+            </div>
             <div className="flex items-center space-x-3">
               <button
                 onClick={loadProfile}
@@ -538,6 +595,8 @@ const CounselorProfile = () => {
             </div>
           </div>
         </div>
+
+
 
 
         {/* Error Message */}
@@ -586,7 +645,14 @@ const CounselorProfile = () => {
         </div>
 
         {/* Main Form */}
-        <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg">
+        <Formik
+          initialValues={formData}
+          validationSchema={counselorProfileSchema}
+          onSubmit={handleFormSubmit}
+          enableReinitialize={true}
+        >
+          {({ values, errors, touched, setFieldValue, isSubmitting }) => (
+            <Form className="bg-white shadow rounded-lg">
           <div className="p-8">
             {/* Profile Photo Section */}
             <div className="mb-8">
@@ -753,16 +819,23 @@ const CounselorProfile = () => {
 
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Bio
+                  Bio *
                 </label>
-                <textarea
-                  value={formData.bio}
-                  onChange={(e) => handleInputChange("bio", e.target.value)}
-                  disabled={!isEditing}
+                <Field
+                  as="textarea"
+                  name="bio"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  placeholder="Tell students about your background and counseling approach..."
+                  disabled={!isEditing}
+                  placeholder="Tell students about your background and counseling approach. Describe your experience, methodology, and what makes you unique as a counselor..."
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                    errors.bio && touched.bio
+                      ? "border-red-300"
+                      : "border-gray-300"
+                  }`}
                 />
+                {errors.bio && touched.bio && (
+                  <p className="mt-1 text-sm text-red-600">{errors.bio}</p>
+                )}
               </div>
             </div>
 
@@ -778,58 +851,66 @@ const CounselorProfile = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Specialization
+                    Specialization *
                   </label>
-                  <input
+                  <Field
                     type="text"
-                    value={formData.specialization}
-                    onChange={(e) =>
-                      handleInputChange("specialization", e.target.value)
-                    }
+                    name="specialization"
+                    placeholder="e.g., College Admissions, Career Guidance, Academic Counseling"
                     disabled={!isEditing}
-                    placeholder="e.g., College Admissions, Career Guidance"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.specialization && touched.specialization
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.specialization && touched.specialization && (
+                    <p className="mt-1 text-sm text-red-600">{errors.specialization}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Experience (Years)
+                    Experience (Years) *
                   </label>
-                  <input
+                  <Field
                     type="number"
+                    name="experience"
                     min="0"
                     max="50"
-                    value={formData.experience}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "experience",
-                        parseInt(e.target.value) || 0
-                      )
-                    }
+                    placeholder="0"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.experience && touched.experience
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.experience && touched.experience && (
+                    <p className="mt-1 text-sm text-red-600">{errors.experience}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Hourly Rate ($)
+                    Hourly Rate ($) *
                   </label>
-                  <input
+                  <Field
                     type="number"
+                    name="hourlyRate"
                     min="0"
                     step="0.01"
-                    value={formData.hourlyRate}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "hourlyRate",
-                        parseFloat(e.target.value) || 0
-                      )
-                    }
+                    placeholder="0.00"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.hourlyRate && touched.hourlyRate
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    }`}
                   />
+                  {errors.hourlyRate && touched.hourlyRate && (
+                    <p className="mt-1 text-sm text-red-600">{errors.hourlyRate}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -844,8 +925,10 @@ const CounselorProfile = () => {
               </div>
 
               {isEditing ? (
+                <FieldArray name="education">
+                  {({ push, remove }) => (
                 <div className="space-y-4">
-                  {formData.education.map((edu, index) => (
+                      {values.education?.map((edu, index) => (
                     <div
                       key={index}
                       className="border border-gray-300 rounded-lg p-4"
@@ -853,102 +936,74 @@ const CounselorProfile = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Institution
+                                Institution *
                           </label>
-                          <input
+                              <Field
                             type="text"
-                            value={edu.institution || ""}
-                            onChange={(e) => {
-                              const newEducation = [...formData.education];
-                              newEducation[index] = {
-                                ...newEducation[index],
-                                institution: e.target.value,
-                              };
-                              setFormData((prev) => ({
-                                ...prev,
-                                education: newEducation,
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                          />
+                                name={`education.${index}.institution`}
+                                placeholder="e.g., Harvard University, Stanford University"
+                                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.education?.[index]?.institution ? "border-red-300" : "border-gray-300"
+                                }`}
+                              />
+                              {errors.education?.[index]?.institution && (
+                                <p className="mt-1 text-sm text-red-600">{errors.education[index].institution}</p>
+                              )}
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Degree
+                                Degree *
                           </label>
-                          <input
+                              <Field
                             type="text"
-                            value={edu.degree || ""}
-                            onChange={(e) => {
-                              const newEducation = [...formData.education];
-                              newEducation[index] = {
-                                ...newEducation[index],
-                                degree: e.target.value,
-                              };
-                              setFormData((prev) => ({
-                                ...prev,
-                                education: newEducation,
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                          />
+                                name={`education.${index}.degree`}
+                                placeholder="e.g., Bachelor of Science, Master of Arts"
+                                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.education?.[index]?.degree ? "border-red-300" : "border-gray-300"
+                                }`}
+                              />
+                              {errors.education?.[index]?.degree && (
+                                <p className="mt-1 text-sm text-red-600">{errors.education[index].degree}</p>
+                              )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Field of Study
+                                Field of Study *
                           </label>
-                          <input
+                              <Field
                             type="text"
-                            value={edu.fieldOfStudy || ""}
-                            onChange={(e) => {
-                              const newEducation = [...formData.education];
-                              newEducation[index] = {
-                                ...newEducation[index],
-                                fieldOfStudy: e.target.value,
-                              };
-                              setFormData((prev) => ({
-                                ...prev,
-                                education: newEducation,
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                          />
+                                name={`education.${index}.fieldOfStudy`}
+                                placeholder="e.g., Psychology, Counseling, Education"
+                                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.education?.[index]?.fieldOfStudy ? "border-red-300" : "border-gray-300"
+                                }`}
+                              />
+                              {errors.education?.[index]?.fieldOfStudy && (
+                                <p className="mt-1 text-sm text-red-600">{errors.education[index].fieldOfStudy}</p>
+                              )}
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Graduation Year
+                                Graduation Year *
                           </label>
-                          <input
+                              <Field
                             type="text"
-                            value={edu.graduationYear || ""}
-                            onChange={(e) => {
-                              const newEducation = [...formData.education];
-                              newEducation[index] = {
-                                ...newEducation[index],
-                                graduationYear: e.target.value,
-                              };
-                              setFormData((prev) => ({
-                                ...prev,
-                                education: newEducation,
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                          />
+                                name={`education.${index}.graduationYear`}
+                                placeholder="e.g., 2020, 2021, 2022"
+                                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.education?.[index]?.graduationYear ? "border-red-300" : "border-gray-300"
+                                }`}
+                              />
+                              {errors.education?.[index]?.graduationYear && (
+                                <p className="mt-1 text-sm text-red-600">{errors.education[index].graduationYear}</p>
+                              )}
                         </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          const newEducation = formData.education.filter(
-                            (_, i) => i !== index
-                          );
-                          setFormData((prev) => ({
-                            ...prev,
-                            education: newEducation,
-                          }));
-                        }}
+                            onClick={() => remove(index)}
                         className="mt-4 text-red-600 hover:text-red-700 text-sm font-medium"
                       >
                         Remove Education
@@ -957,30 +1012,27 @@ const CounselorProfile = () => {
                   ))}
                   <button
                     type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        education: [
-                          ...prev.education,
-                          {
+                        onClick={() => push({
                             institution: "",
                             degree: "",
                             fieldOfStudy: "",
                             graduationYear: "",
-                          },
-                        ],
-                      }));
-                    }}
+                        })}
                     className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
                   >
                     <PlusIcon className="h-5 w-5" />
                     Add Education
                   </button>
+                      {errors.education && typeof errors.education === 'string' && (
+                        <p className="text-sm text-red-600">{errors.education}</p>
+                      )}
                 </div>
+                  )}
+                </FieldArray>
               ) : (
                 <div className="space-y-4">
-                  {formData.education && formData.education.length > 0 ? (
-                    formData.education.map((edu, index) => (
+                  {values.education && values.education.length > 0 ? (
+                    values.education.map((edu, index) => (
                       <div
                         key={index}
                         className="border border-gray-200 rounded-lg p-4"
@@ -1015,35 +1067,23 @@ const CounselorProfile = () => {
                     </h3>
                   </div>
                   {isEditing ? (
+                    <FieldArray name="certifications">
+                      {({ push, remove }) => (
                     <div className="space-y-2">
-                      {formData.certifications.map((cert, index) => (
+                          {values.certifications?.map((cert, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <input
+                              <Field
                             type="text"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            value={cert}
-                            onChange={(e) => {
-                              const newCerts = [...formData.certifications];
-                              newCerts[index] = e.target.value;
-                              setFormData((prev) => ({
-                                ...prev,
-                                certifications: newCerts,
-                              }));
-                            }}
-                            placeholder="e.g., Licensed Professional Counselor"
+                                name={`certifications.${index}`}
+                                className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.certifications?.[index] ? "border-red-300" : "border-gray-300"
+                                }`}
+                                placeholder="e.g., Licensed Professional Counselor, Certified Career Counselor"
                           />
                           <button
                             type="button"
                             className="text-red-500 hover:text-red-700 p-1"
-                            onClick={() => {
-                              const newCerts = formData.certifications.filter(
-                                (_, i) => i !== index
-                              );
-                              setFormData((prev) => ({
-                                ...prev,
-                                certifications: newCerts,
-                              }));
-                            }}
+                                onClick={() => remove(index)}
                           >
                             <XMarkIcon className="h-5 w-5" />
                           </button>
@@ -1052,22 +1092,21 @@ const CounselorProfile = () => {
                       <button
                         type="button"
                         className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            certifications: [...prev.certifications, ""],
-                          }));
-                        }}
+                            onClick={() => push("")}
                       >
                         <PlusIcon className="h-5 w-5" />
                         Add Certification
                       </button>
+                          {errors.certifications && typeof errors.certifications === 'string' && (
+                            <p className="text-sm text-red-600">{errors.certifications}</p>
+                          )}
                     </div>
+                      )}
+                    </FieldArray>
                   ) : (
                     <div className="space-y-2">
-                      {formData.certifications &&
-                      formData.certifications.length > 0 ? (
-                        formData.certifications.map((cert, index) => (
+                      {values.certifications && values.certifications.length > 0 ? (
+                        values.certifications.map((cert, index) => (
                           <div
                             key={index}
                             className="flex items-center text-gray-600"
@@ -1094,58 +1133,46 @@ const CounselorProfile = () => {
                     </h3>
                   </div>
                   {isEditing ? (
-                    <div className="space-y-2">
-                      {formData.languages.map((lang, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            value={lang}
-                            onChange={(e) => {
-                              const newLangs = [...formData.languages];
-                              newLangs[index] = e.target.value;
-                              setFormData((prev) => ({
-                                ...prev,
-                                languages: newLangs,
-                              }));
-                            }}
-                            placeholder="e.g., English"
-                          />
+                    <FieldArray name="languages">
+                      {({ push, remove }) => (
+                        <div className="space-y-2">
+                          {values.languages?.map((lang, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <Field
+                                type="text"
+                                name={`languages.${index}`}
+                                className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                                  errors.languages?.[index] ? "border-red-300" : "border-gray-300"
+                                }`}
+                                placeholder="e.g., English, Spanish, French"
+                              />
+                              <button
+                                type="button"
+                                className="text-red-500 hover:text-red-700 p-1"
+                                onClick={() => remove(index)}
+                              >
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          ))}
                           <button
                             type="button"
-                            className="text-red-500 hover:text-red-700 p-1"
-                            onClick={() => {
-                              const newLangs = formData.languages.filter(
-                                (_, i) => i !== index
-                              );
-                              setFormData((prev) => ({
-                                ...prev,
-                                languages: newLangs,
-                              }));
-                            }}
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
+                            onClick={() => push("")}
                           >
-                            <XMarkIcon className="h-5 w-5" />
+                            <PlusIcon className="h-5 w-5" />
+                            Add Language
                           </button>
+                          {errors.languages && typeof errors.languages === 'string' && (
+                            <p className="text-sm text-red-600">{errors.languages}</p>
+                          )}
                         </div>
-                      ))}
-                      <button
-                        type="button"
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            languages: [...prev.languages, ""],
-                          }));
-                        }}
-                      >
-                        <PlusIcon className="h-5 w-5" />
-                        Add Language
-                      </button>
-                    </div>
+                      )}
+                    </FieldArray>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {formData.languages && formData.languages.length > 0 ? (
-                        formData.languages.map((lang, index) => (
+                      {values.languages && values.languages.length > 0 ? (
+                        values.languages.map((lang, index) => (
                           <span
                             key={index}
                             className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
@@ -1271,28 +1298,30 @@ const CounselorProfile = () => {
             </div>
           </div>
 
-          {/* Form Actions */}
-          {isEditing && (
-            <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </div>
+              {/* Form Actions */}
+              {isEditing && (
+                <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={handleCancel}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || isSaving}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting || isSaving ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Form>
           )}
-        </form>
+        </Formik>
 
         <TwoFAModal />
         <SuccessModal 

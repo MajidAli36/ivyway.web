@@ -211,21 +211,30 @@ export default function SessionCard({ session, onCancelRequest }) {
       </div>
 
       {/* Card Footer */}
-      <div className="px-4 pb-4 flex items-center justify-between">
-        <div>
-          <span
-            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}
-          >
-            <statusConfig.icon className="h-3 w-3 mr-1" />
-            {statusConfig.label}
-          </span>
+      <div className="px-4 pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}
+            >
+              <statusConfig.icon className="h-3 w-3 mr-1" />
+              {statusConfig.label}
+            </span>
+          </div>
+          <div className="text-sm text-gray-500 flex space-x-2">
+            <span>{formattedDate || "Loading..."}</span>
+            <span>
+              {session.startTime} - {session.endTime}
+            </span>
+          </div>
         </div>
-        <div className="text-sm text-gray-500 flex space-x-2">
-          <span>{formattedDate || "Loading..."}</span>
-          <span>
-            {session.startTime} - {session.endTime}
-          </span>
-        </div>
+        
+        {/* Join Meeting Button - Show for confirmed/accepted sessions */}
+        {(session.status === 'confirmed' || session.status === 'accepted') && (
+          <div className="flex justify-end">
+            <SessionButton session={session} userRole="student" />
+          </div>
+        )}
       </div>
 
     

@@ -1,20 +1,23 @@
 "use client";
 
 import { useState, useEffect, Fragment } from "react";
+import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
 import { Dialog, Transition } from "@headlessui/react";
 import {
-  ArrowLeftIcon,
   CalendarIcon,
   PlusIcon,
   TrashIcon,
   ExclamationTriangleIcon,
+  ClockIcon,
+  UserGroupIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import { availability as availabilityAPI } from "@/app/lib/api/endpoints";
+import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format } from "date-fns";
-import ExistingAvailability from "../availability/components/ExistingAvailability";
 import apiClient from "@/app/lib/api/client";
 import authService from "@/app/lib/auth/authService";
 
@@ -42,11 +45,12 @@ export default function TutorAvailability() {
   const [newSlots, setNewSlots] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ type: '', message: '', description: '' });
   const [errorMessage, setErrorMessage] = useState("");
   const [defaultIsAvailable, setDefaultIsAvailable] = useState(true);
   const [defaultRecurrence, setDefaultRecurrence] = useState("weekly");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [editingSlotId, setEditingSlotId] = useState(null);
+  const [editingData, setEditingData] = useState({});
 
   // Confirmation modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -67,228 +71,248 @@ export default function TutorAvailability() {
   // Fetch existing availability when component mounts
   useEffect(() => {
     const fetchAvailability = async () => {
-      try {
-        setIsLoading(true);
-
-        if (!authService.isAuthenticated()) {
-          console.warn("User not authenticated, can't fetch availability");
-          return;
-        }
-
-        const response = await availabilityAPI.getMyAvailability();
-
-        // Handle various response formats safely
-        if (response && response.data) {
-          console.log("Fetched availability data:", response.data);
-
-          // Handle both array and object responses
-          const slotsData = Array.isArray(response.data)
-            ? response.data
-            : Object.values(response.data || {});
-
-          // Format the data, handling potential missing properties
-          const formattedData = slotsData
-            .map((slot) => ({
-              id: slot.id || `temp-${Math.random().toString(36).substring(2)}`,
-              dayOfWeek:
-                typeof slot.dayOfWeek === "number" ? slot.dayOfWeek : 0,
-              startTime: slot.startTime
-                ? slot.startTime.substring(0, 5)
-                : "09:00",
-              endTime: slot.endTime ? slot.endTime.substring(0, 5) : "10:00",
-              isAvailable:
-                typeof slot.isAvailable === "boolean" ? slot.isAvailable : true,
-              recurrence: slot.recurrence || "weekly",
-            }))
-            .filter((slot) => slot.id); // Filter out any malformed slots
-
-          console.log("Formatted availability data:", formattedData);
-          setScheduleData(formattedData);
-        } else {
-          // Handle missing data gracefully
-          console.log(
-            "No availability data found - this is normal for new users"
-          );
-          setScheduleData([]);
-        }
-      } catch (error) {
-        console.error("Error fetching availability:", error);
-        // Don't show error message for empty data - it's a normal state
-        // Just initialize with empty array
-        setScheduleData([]);
-      } finally {
-        setIsLoading(false);
+      if (!authService.isAuthenticated()) {
+        console.warn("User not authenticated, can't fetch availability");
+        return;
       }
+
+      setIsLoading(true);
+
+      const result = await safeApiCall(
+        () => availabilityAPI.getMyAvailability(),
+        {
+          extractArray: true,
+          dataKey: "data",
+          defaultData: [],
+          errorMessage: "Failed to load availability data. Please try again.",
+        }
+      );
+
+      if (result.success) {
+        console.log("Fetched availability data:", result.data);
+
+        // The backend returns data directly as an array
+        const slotsData = Array.isArray(result.data) ? result.data : [];
+
+        // Format the data, handling potential missing properties
+        const formattedData = slotsData
+          .map((slot) => ({
+            id: slot.id || `temp-${Math.random().toString(36).substring(2)}`,
+            dayOfWeek: typeof slot.dayOfWeek === "number" ? slot.dayOfWeek : 0,
+            startTime: slot.startTime ? slot.startTime.substring(0, 5) : "09:00",
+            endTime: slot.endTime ? slot.endTime.substring(0, 5) : "10:00",
+            isAvailable: typeof slot.isAvailable === "boolean" ? slot.isAvailable : true,
+            recurrence: slot.recurrence || "weekly",
+          }))
+          .filter((slot) => slot.id); // Filter out any malformed slots
+
+        console.log("Formatted availability data:", formattedData);
+        setScheduleData(formattedData);
+        setErrorMessage("");
+      } else {
+        console.error("API call failed:", result.error);
+        setScheduleData([]);
+        setErrorMessage("Failed to load availability data. Please try again.");
+      }
+
+      setIsLoading(false);
     };
 
-    if (authService.isAuthenticated()) {
-      fetchAvailability();
-    }
+    fetchAvailability();
   }, [isAuthenticated]);
 
-  // Convert time string to Date object for DatePicker
-  const parseTimeToDate = (timeString) => {
-    if (!timeString) return new Date();
-    try {
-      const [hours, minutes] = timeString.split(":");
-      const today = new Date();
-      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(hours), parseInt(minutes), 0, 0);
-      return date;
-    } catch (error) {
-      console.error("Error parsing time:", error);
-      return new Date();
-    }
+  // Helper to convert HH:MM to minutes (for validation)
+  const toMinutes = (time) => {
+    const [h, m] = String(time || "").split(":").map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN;
   };
 
-  // Convert Date object to time string for API
-  const formatDateToTime = (date) => {
-    // Ensure format HH:MM with proper padding for minutes
-    return format(date, "HH:mm");
+  // Format HH:MM (24h) to 12-hour with AM/PM
+  const formatTime12h = (time) => {
+    const [hStr, mStr] = String(time || "").split(":");
+    const h = Number(hStr);
+    const m = Number(mStr);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return String(time || "");
+    const period = h >= 12 ? "PM" : "AM";
+    const hour12 = ((h + 11) % 12) + 1; // 0->12, 13->1
+    const mm = String(m).padStart(2, "0");
+    return `${hour12}:${mm} ${period}`;
   };
 
-  const addTimeSlot = (dayId) => {
+  // Format a range and append (next day) if it crosses midnight
+  const formatRangeWithNextDay = (start, end) => {
+    const startMin = toMinutes(start);
+    const endMin = toMinutes(end);
+    const crossesMidnight = Number.isFinite(startMin) && Number.isFinite(endMin) && endMin <= startMin;
+    const base = `${formatTime12h(start)} - ${formatTime12h(end)}`;
+    return crossesMidnight ? `${base} (next day)` : base;
+  };
+
+  // Add new slot
+  const addNewSlot = () => {
     const newSlot = {
-      id: Math.random().toString(36).substring(2), // Temporary ID for UI
-      dayOfWeek: Number(dayId),
+      id: `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+      dayOfWeek: 1, // Default to Monday
       startTime: "09:00",
       endTime: "10:00",
       isAvailable: defaultIsAvailable,
       recurrence: defaultRecurrence,
     };
 
-    setNewSlots([...newSlots, newSlot]);
+    setNewSlots((prev) => [...prev, newSlot]);
   };
 
-  const removeTimeSlot = (slotId) => {
-    setNewSlots(newSlots.filter((slot) => slot.id !== slotId));
-  };
-
-  const updateTimeSlot = (slotId, field, value) => {
-    setNewSlots(
-      newSlots.map((slot) =>
+  // Update slot
+  const updateSlot = (slotId, field, value) => {
+    setNewSlots((prev) =>
+      prev.map((slot) =>
         slot.id === slotId ? { ...slot, [field]: value } : slot
       )
     );
   };
 
-  // Prepare to update existing slot - show confirmation dialog
-  const prepareUpdate = (slotId, updatedData) => {
-    setPendingAction({ type: "update", id: slotId, data: updatedData });
-    setShowUpdateConfirm(true);
+  // Remove slot
+  const removeSlot = (slotId) => {
+    setNewSlots((prev) => prev.filter((slot) => slot.id !== slotId));
   };
 
-  // Actually update existing availability after confirmation
-  const updateExistingSlot = async () => {
-    if (!pendingAction || pendingAction.type !== "update") return;
+  // Begin editing existing slot
+  const startEditing = (slot) => {
+    setEditingSlotId(slot.id);
+    setEditingData({
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isAvailable: slot.isAvailable !== false,
+      recurrence: slot.recurrence || "weekly",
+    });
+  };
 
-    const { id: slotId, data: updatedData } = pendingAction;
+  const cancelEditing = () => {
+    setEditingSlotId(null);
+    setEditingData({});
+  };
 
+  const updateEditingField = (field, value) => {
+    setEditingData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveEditing = async (slotId) => {
     try {
       setIsLoading(true);
-      setShowUpdateConfirm(false);
+      setErrorMessage("");
 
-      await availabilityAPI.update(slotId, {
-        dayOfWeek: Number(updatedData.dayOfWeek),
-        startTime: updatedData.startTime.substring(0, 5),
-        endTime: updatedData.endTime.substring(0, 5),
-        isAvailable: updatedData.isAvailable,
-        recurrence: updatedData.recurrence,
-      });
-
-      await refreshAvailabilityData();
-
-      showSuccess('update', 'Updated!', 'Availability slot updated successfully');
-    } catch (error) {
-      console.error("Error updating availability:", error);
-      setErrorMessage(
-        error.message ||
-          error.response?.data?.message ||
-          "Failed to update availability"
-      );
-    } finally {
-      setIsLoading(false);
-      setPendingAction(null);
-    }
-  };
-
-  // Prepare to delete slot - show confirmation dialog
-  const prepareDelete = (slotId) => {
-    console.log("prepareDelete received ID:", slotId);
-    console.log("Current scheduleData:", scheduleData);
-
-    // Find the slot in scheduleData to verify the ID
-    const slotToDelete = scheduleData.find((slot) => slot.id === slotId);
-    console.log("Found slot to delete:", slotToDelete);
-
-    setPendingAction({ type: "delete", id: slotId });
-    setShowDeleteConfirm(true);
-  };
-
-  const deleteSlot = async () => {
-    if (!pendingAction || pendingAction.type !== "delete") return;
-
-    const slotId = pendingAction.id;
-
-    // Debug logs
-    console.log("Attempting to delete availability slot with ID:", slotId);
-
-    // Find the slot in scheduleData to double-check
-    const slotToDelete = scheduleData.find((slot) => slot.id === slotId);
-    console.log("Full slot being deleted:", slotToDelete);
-
-    try {
-      setIsLoading(true);
-      setShowDeleteConfirm(false);
-
-      // Use the ID exactly as it appears in the data, without any transformation
-      console.log("Sending delete request to API for ID:", slotId);
-      await availabilityAPI.delete(slotId);
-
-      // Instead of manually updating state, refresh from API
-      await refreshAvailabilityData();
-
-      showSuccess('delete', 'Deleted!', 'Availability slot removed successfully');
-    } catch (error) {
-      console.error("Error deleting availability:", error);
-
-      // More detailed error logging
-      if (error.response) {
-        console.log("API Error Status:", error.response.status);
-        console.log("API Error Headers:", error.response.headers);
-        console.log("API Error Data:", error.response.data);
+      // Validate times: allow cross-midnight, ensure format
+      const startMin = toMinutes(editingData.startTime);
+      const endMin = toMinutes(editingData.endTime);
+      if (isNaN(startMin) || isNaN(endMin)) {
+        throw new Error(`Invalid time format: ${editingData.startTime} - ${editingData.endTime}`);
       }
 
-      setErrorMessage(
-        error.message ||
-          error.response?.data?.message ||
-          "Failed to delete availability"
+      const payload = {
+        startTime: String(editingData.startTime).substring(0, 5),
+        endTime: String(editingData.endTime).substring(0, 5),
+        isAvailable: Boolean(editingData.isAvailable),
+        recurrence: editingData.recurrence,
+      };
+
+      const result = await safeApiCall(() => availabilityAPI.update(slotId, payload), {
+        extractArray: true,
+        dataKey: "data",
+        defaultData: [],
+        errorMessage: "Failed to update availability slot. Please try again.",
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Update failed");
+      }
+
+      // Reflect changes in UI
+      setScheduleData((prev) =>
+        prev.map((s) =>
+          s.id === slotId
+            ? {
+                ...s,
+                startTime: payload.startTime,
+                endTime: payload.endTime,
+                isAvailable: payload.isAvailable,
+                recurrence: payload.recurrence,
+              }
+            : s
+        )
       );
+
+      setEditingSlotId(null);
+      setEditingData({});
+      toast.success("Availability slot updated");
+    } catch (err) {
+      console.error("Error updating slot:", err);
+      setErrorMessage(err.message || String(err));
+      toast.error("Failed to update availability slot");
     } finally {
       setIsLoading(false);
-      setPendingAction(null);
     }
   };
 
-  // Helper function to convert time string to minutes for comparison
-  const toMinutes = (timeString) => {
-    if (!timeString) return 0;
-    const [hours, minutes] = timeString.split(":").map(Number);
-    return hours * 60 + minutes;
-  };
+  // Delete existing slot
+  const deleteSlot = async (slotId) => {
+    console.log("🔴 DELETE SLOT: Starting delete process for slot ID:", slotId);
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
 
-  // Helper function to check if a slot crosses midnight
-  const isCrossMidnight = (startTime, endTime) => {
-    const startMin = toMinutes(startTime);
-    const endMin = toMinutes(endTime);
-    return endMin <= startMin;
-  };
+      // Find the slot to get its server ID
+      const slot = scheduleData.find((s) => s.id === slotId);
+      console.log("🔴 DELETE SLOT: Found slot:", slot);
+      if (!slot) {
+        console.error("🔴 DELETE SLOT: Slot not found with ID:", slotId);
+        console.error(
+          "🔴 DELETE SLOT: Available slots:",
+          scheduleData.map((s) => ({ id: s.id, dayOfWeek: s.dayOfWeek }))
+        );
+        throw new Error(
+          "Slot not found. Please refresh the page and try again."
+        );
+      }
 
-  // Helper function to show success messages
-  const showSuccess = (type, message, description) => {
-    setSuccessMessage({ type, message, description });
-    setShowSuccessMessage(true);
-    // Auto-close popup after 3 seconds
-    setTimeout(() => setShowSuccessMessage(false), 3000);
+      // Check if it's a temporary slot (not saved yet)
+      if (slot.id.startsWith("temp-")) {
+        console.log("🔴 DELETE SLOT: This is a temporary slot, removing from local state only");
+        // For temporary slots, just remove from local state
+        setScheduleData((prev) => {
+          const filtered = prev.filter((s) => s.id !== slotId);
+          console.log("🔴 DELETE SLOT: Updated schedule data:", filtered);
+          return filtered;
+        });
+        toast.success("Availability slot removed");
+        console.log("🔴 DELETE SLOT: Temporary slot removed successfully");
+        return;
+      }
+
+      // For saved slots, make API call to delete
+      console.log("🔴 DELETE SLOT: Making API call to delete slot ID:", slotId);
+      const result = await safeApiCall(() => availabilityAPI.delete(slotId), {
+        extractArray: true,
+        dataKey: "data",
+        defaultData: [],
+        errorMessage: "Failed to delete availability slot. Please try again.",
+      });
+      console.log("🔴 DELETE SLOT: API call result:", result);
+
+      if (result.success) {
+        setScheduleData((prev) => prev.filter((s) => s.id !== slotId));
+        toast.success("Availability slot deleted");
+      } else {
+        console.error("Error deleting slot:", result.error);
+        setErrorMessage("Failed to delete slot: " + result.error);
+        toast.error("Failed to delete slot");
+      }
+    } catch (error) {
+      console.error("Error deleting slot:", error);
+      setErrorMessage("Failed to delete slot: " + (error.message || error));
+      toast.error("Failed to delete slot");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -319,7 +343,6 @@ export default function TutorAvailability() {
       // Format data for API - removing any temporary UI IDs
       const formattedData = newSlots.map((slot) => ({
         dayOfWeek: Number(slot.dayOfWeek),
-        // Just use HH:MM format without adding seconds
         startTime: slot.startTime.substring(0, 5),
         endTime: slot.endTime.substring(0, 5),
         isAvailable: slot.isAvailable,
@@ -332,514 +355,475 @@ export default function TutorAvailability() {
 
       console.log("Saving availability data:", formattedData);
 
-      // Save all time slots
+      // Save all time slots using safe API calls
       const savePromises = formattedData.map((slot) =>
-        availabilityAPI.create(slot)
+        safeApiCall(() => availabilityAPI.create(slot), {
+          extractArray: true,
+          dataKey: "data",
+          defaultData: [],
+          errorMessage: "Failed to save availability slot. Please try again.",
+        })
       );
 
-      const responses = await Promise.all(savePromises);
-      console.log("API responses:", responses);
+      const results = await Promise.all(savePromises);
+      console.log("API responses:", results);
 
-      // Process the responses to get the new slots with their server-generated IDs
-      const newServerSlots = responses
-        .map((response) => {
-          // Check if response and response.data exist
-          if (!response || !response.data) {
-            console.warn("Invalid response format:", response);
-            return null;
-          }
+      // Check if all saves were successful
+      const failedSaves = results.filter((result) => !result.success);
+      if (failedSaves.length > 0) {
+        console.error("Some saves failed:", failedSaves);
+        setErrorMessage(
+          "Some availability slots failed to save. Please try again."
+        );
+        return;
+      }
 
-          const slotData = response.data;
-          console.log("Processing slot data:", slotData);
+      // Process the successful responses to get the new slots with their server-generated IDs
+      const newSlotsWithIds = results.map((result, index) => {
+        const slotData = formattedData[index];
+        const createdSlot = Array.isArray(result.data) ? result.data[0] : result.data;
+        return {
+          id: createdSlot?.id || `saved-${Date.now()}-${index}`,
+          dayOfWeek: slotData.dayOfWeek,
+          startTime: slotData.startTime,
+          endTime: slotData.endTime,
+          isAvailable: slotData.isAvailable,
+          recurrence: slotData.recurrence,
+        };
+      });
 
-          return {
-            id: slotData.id || Math.random().toString(36).substring(2),
-            dayOfWeek: slotData.dayOfWeek || 0,
-            // Safely handle undefined time strings
-            startTime: slotData.startTime
-              ? slotData.startTime.substring(0, 5)
-              : "09:00",
-            endTime: slotData.endTime
-              ? slotData.endTime.substring(0, 5)
-              : "10:00",
-            isAvailable:
-              typeof slotData.isAvailable === "boolean"
-                ? slotData.isAvailable
-                : true,
-            recurrence: slotData.recurrence || "weekly",
-          };
-        })
-        // Filter out any null values that might have resulted from invalid responses
-        .filter((slot) => slot !== null);
+      // Add the new slots to the existing schedule data
+      setScheduleData((prev) => [...prev, ...newSlotsWithIds]);
 
-      console.log("Formatted new slots:", newServerSlots);
-
-      // Clear the new slots form first
+      // Clear the new slots
       setNewSlots([]);
 
-      // Refresh data from server to get the latest state
-      await refreshAvailabilityData();
-
-      // Show success message
-      showSuccess('save', 'Success!', 'Availability saved successfully');
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      toast.success("Availability saved successfully");
     } catch (error) {
       console.error("Error saving availability:", error);
       setErrorMessage(
-        error.message ||
-          error.response?.data?.message ||
-          "Failed to save availability"
+        "Failed to save availability: " + (error.message || error)
       );
-
-      // Scroll to error message
-      document.getElementById("error-message")?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      toast.error("Failed to save availability");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getDaySlots = (dayId) => {
-    const numDayId = Number(dayId);
-    return newSlots.filter((slot) => Number(slot.dayOfWeek) === numDayId);
+  // Confirmation handlers
+  const handleDeleteConfirm = (slotId) => {
+    console.log("🔴 DELETE CONFIRM: Attempting to delete slot with ID:", slotId);
+    console.log("🔴 DELETE CONFIRM: Current schedule data:", scheduleData);
+    const slot = scheduleData.find((s) => s.id === slotId);
+    console.log("🔴 DELETE CONFIRM: Found slot:", slot);
+
+    setPendingAction(() => () => {
+      console.log("🔴 PENDING ACTION: About to call deleteSlot with ID:", slotId);
+      return deleteSlot(slotId);
+    });
+    setShowDeleteConfirm(true);
   };
 
-  // Add this function to refresh data
-  const refreshAvailabilityData = async () => {
-    try {
-      setIsLoading(true);
-      const response = await availabilityAPI.getMyAvailability();
+  const handleUpdateConfirm = () => {
+    setPendingAction(() => handleSave);
+    setShowUpdateConfirm(true);
+  };
 
-      // Handle both successful and empty responses
-      if (response && response.data) {
-        // Handle both array and object responses
-        const slotsData = Array.isArray(response.data)
-          ? response.data
-          : Object.values(response.data || {});
-
-        // Safely process data with fallbacks for missing properties
-        const formattedData = slotsData
-          .map((slot) => ({
-            id: slot.id || `temp-${Math.random().toString(36).substring(2)}`,
-            dayOfWeek: typeof slot.dayOfWeek === "number" ? slot.dayOfWeek : 0,
-            startTime: slot.startTime
-              ? slot.startTime.substring(0, 5)
-              : "09:00",
-            endTime: slot.endTime ? slot.endTime.substring(0, 5) : "10:00",
-            isAvailable:
-              typeof slot.isAvailable === "boolean" ? slot.isAvailable : true,
-            recurrence: slot.recurrence || "weekly",
-          }))
-          .filter((slot) => slot.id); // Filter out any malformed slots
-
-        console.log("Refreshed availability data:", formattedData);
-        setScheduleData(formattedData);
-      } else {
-        // Simply set to empty array without showing errors - this is normal
-        console.log("No availability data found on refresh");
-        setScheduleData([]);
-      }
-    } catch (error) {
-      console.error("Error refreshing availability:", error);
-      // Don't change existing data on error - leave as is
-      // Don't show error message for standard "no data" cases
-    } finally {
-      setIsLoading(false);
+  const executePendingAction = () => {
+    console.log("🔴 EXECUTE PENDING ACTION: pendingAction exists?", !!pendingAction);
+    if (pendingAction) {
+      console.log("🔴 EXECUTE PENDING ACTION: Calling pending action...");
+      pendingAction();
+      setPendingAction(null);
+    } else {
+      console.log("🔴 EXECUTE PENDING ACTION: No pending action to execute!");
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-500" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">
+            Authentication Required
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Please log in to manage your availability.
+          </p>
+          <div className="mt-6">
+            <Link
+              href="/login"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Go to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#243b53] flex items-center">
-            <CalendarIcon className="h-8 w-8 mr-3 text-blue-600" />
-            Manage Availability
-          </h1>
-          <p className="text-[#6b7280] mt-2 max-w-3xl">
-            Set your weekly availability by creating time slots when you're
-            available to teach. Students will only be able to book sessions
-            during these times.
-          </p>
-        </div>
-        <Link href="/tutor">
-          <button className="inline-flex items-center px-4 py-2 border border-blue-600 shadow-sm text-sm font-medium rounded-full text-blue-600 bg-white hover:bg-blue-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600">
-            <ArrowLeftIcon className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </button>
-        </Link>
-      </div>
-
-      {/* Success Message Popup */}
-      <Transition.Root show={showSuccessMessage} as={Fragment}>
-        <div className="fixed top-4 right-4 z-50 pointer-events-none">
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0 translate-x-full"
-            enterTo="opacity-100 translate-x-0"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100 translate-x-0"
-            leaveTo="opacity-0 translate-x-full"
-          >
-            <div className="pointer-events-auto transform transition-all">
-              <div className={`bg-white rounded-lg shadow-lg border p-4 max-w-sm ${
-                successMessage.type === 'delete' ? 'border-red-200' : 'border-green-200'
-              }`}>
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                      successMessage.type === 'delete' ? 'bg-red-100' : 'bg-green-100'
-                    }`}>
-                      {successMessage.type === 'delete' ? (
-                        <svg
-                          className="h-5 w-5 text-red-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-5 w-5 text-green-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth="1.5"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      {successMessage.message}
-                    </h3>
-                    <p className="text-xs text-gray-600">
-                      {successMessage.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      <Toaster position="top-right" />
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="px-4 py-6 sm:px-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Tutor Availability
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Set your available hours for tutoring sessions
+              </p>
             </div>
-          </Transition.Child>
-        </div>
-      </Transition.Root>
-
-      {/* Existing Availability Section */}
-      <ExistingAvailability
-        slots={scheduleData}
-        isLoading={isLoading}
-        onUpdate={prepareUpdate}
-        onDelete={prepareDelete}
-        recurrenceOptions={recurrenceOptions}
-      />
-
-      {/* Add New Availability Section */}
-      <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl overflow-hidden">
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-700 text-white">
-          <h2 className="text-xl font-semibold">Add New Availability</h2>
-          <p className="text-sm opacity-90">
-            Create new time slots when you're available to teach
-          </p>
+          </div>
         </div>
 
-        <div className="px-6 py-6">
-          {/* Error Message - Moved inside this section */}
-          {errorMessage && (
-            <div
-              id="error-message"
-              className="mb-6 rounded-lg bg-red-50 p-4 border border-red-200 text-red-700 flex items-center"
-            >
-              <svg
-                className="h-5 w-5 mr-2 flex-shrink-0"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span>{errorMessage}</span>
-            </div>
-          )}
-
-          {/* Default Settings */}
-          <div className="mb-6 p-5 bg-gray-50 rounded-lg border border-gray-100">
-            <h3 className="font-medium text-gray-700 mb-3">
-              Default Settings for New Slots
-            </h3>
-            <div className="flex flex-wrap gap-6">
-              <div className="w-full sm:w-auto">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Availability Status
-                </label>
-                <select
-                  value={defaultIsAvailable.toString()}
-                  onChange={(e) =>
-                    setDefaultIsAvailable(e.target.value === "true")
-                  }
-                  className="w-full min-w-[180px] h-11 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-base"
-                >
-                  <option value="true">Available</option>
-                  <option value="false">Unavailable</option>
-                </select>
+        {/* Success Message */}
+        {showSuccessMessage && (
+          <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <CalendarIcon className="h-5 w-5 text-green-500" />
               </div>
-              <div className="w-full sm:w-auto">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Default Recurrence
-                </label>
-                <select
-                  value={defaultRecurrence}
-                  onChange={(e) => setDefaultRecurrence(e.target.value)}
-                  className="w-full min-w-[180px] h-11 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-base"
-                >
-                  {recurrenceOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-green-800">
+                  Availability updated successfully!
+                </h3>
+                <p className="mt-1 text-sm text-green-700">
+                  Your availability schedule has been saved and is now active.
+                </p>
               </div>
             </div>
           </div>
+        )}
 
-          {days.map((day) => (
-            <div key={day.id} className="mb-8 last:mb-0">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center">
-                  <h3 className="text-lg font-semibold text-[#243b53]">
-                    {day.name}
-                  </h3>
-                  <span className="ml-2 text-[#6b7280] text-sm">
-                    {getDaySlots(day.id).length} new slots
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addTimeSlot(day.id)}
-                  className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center transition-colors duration-200"
-                >
-                  <PlusIcon className="h-4 w-4 mr-1" />
-                  Add Time Slot
-                </button>
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
               </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">
+                  {errorMessage}
+                </h3>
+              </div>
+            </div>
+          </div>
+        )}
 
-              {getDaySlots(day.id).length === 0 ? (
-                <div className="bg-gray-50 rounded-lg py-4 px-4 text-center text-[#6b7280]">
-                  No new slots for {day.name}. Click "Add Time Slot" to create
-                  one.
-                </div>
-              ) : (
+        <div className="px-4 py-6 sm:px-0">
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Current Availability
+              </h3>
+
+              {/* Existing Availability */}
+              {scheduleData.length > 0 ? (
                 <div className="space-y-4">
-                  {getDaySlots(day.id).map((slot) => (
-                    <div key={slot.id} className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                        <div className="flex-1 min-w-[180px]">
-                          <label className="block text-sm font-medium text-[#4b5563] mb-2">
-                            Start Time
-                          </label>
-                          <DatePicker
-                            selected={parseTimeToDate(slot.startTime)}
-                            onChange={(date) =>
-                              updateTimeSlot(
-                                slot.id,
-                                "startTime",
-                                formatDateToTime(date)
-                              )
-                            }
-                            showTimeSelect
-                            showTimeSelectOnly
-                            timeIntervals={15}
-                            timeCaption="Time"
-                            dateFormat="h:mm aa"
-                            className="w-full h-11 rounded-md border-gray-300 shadow-sm px-4 py-2 focus:border-blue-600 focus:ring-blue-600 text-base"
-                          />
-                        </div>
-
-                        <div className="flex-1 min-w-[180px]">
-                          <label className="block text-sm font-medium text-[#4b5563] mb-2">
-                            End Time
-                          </label>
-                          <DatePicker
-                            selected={parseTimeToDate(slot.endTime)}
-                            onChange={(date) =>
-                              updateTimeSlot(
-                                slot.id,
-                                "endTime",
-                                formatDateToTime(date)
-                              )
-                            }
-                            showTimeSelect
-                            showTimeSelectOnly
-                            timeIntervals={15}
-                            timeCaption="Time"
-                            dateFormat="h:mm aa"
-                            className="w-full h-11 rounded-md border-gray-300 shadow-sm px-4 py-2 focus:border-blue-600 focus:ring-blue-600 text-base"
-                          />
-                        </div>
-
-                        <div className="flex-1 min-w-[180px]">
-                          <label className="block text-sm font-medium text-[#4b5563] mb-2">
-                            Availability
-                          </label>
-                          <select
-                            value={slot.isAvailable.toString()}
-                            onChange={(e) =>
-                              updateTimeSlot(
-                                slot.id,
-                                "isAvailable",
-                                e.target.value === "true"
-                              )
-                            }
-                            className="w-full h-11 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-base"
-                          >
-                            <option value="true">Available</option>
-                            <option value="false">Unavailable</option>
-                          </select>
-                        </div>
-
-                        <div className="flex-1 min-w-[180px]">
-                          <label className="block text-sm font-medium text-[#4b5563] mb-2">
-                            Recurrence
-                          </label>
-                          <select
-                            value={slot.recurrence}
-                            onChange={(e) =>
-                              updateTimeSlot(
-                                slot.id,
-                                "recurrence",
-                                e.target.value
-                              )
-                            }
-                            className="w-full h-11 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-base"
-                          >
-                            {recurrenceOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => removeTimeSlot(slot.id)}
-                          className="p-3 text-red-500 hover:text-red-700 transition-colors duration-200 h-11 self-end"
-                          aria-label="Remove time slot"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                      
-                      {/* Cross-midnight indicator */}
-                      {isCrossMidnight(slot.startTime, slot.endTime) && (
-                        <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
-                          <div className="flex items-center text-sm text-blue-700">
-                            <svg className="h-4 w-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
-                            <span>This slot continues into the next day</span>
+                  {scheduleData.map((slot) => (
+                    <div
+                      key={slot.id}
+                      className="border border-gray-200 rounded-lg p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <CalendarIcon className="h-5 w-5 text-gray-400" />
+                            <span className="font-medium">
+                              {days[slot.dayOfWeek]?.name}
+                            </span>
                           </div>
+                          {editingSlotId === slot.id ? (
+                            <>
+                              {/* Editing view */}
+                              <div className="flex items-center space-x-2">
+                                <ClockIcon className="h-5 w-5 text-gray-400" />
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="time"
+                                    value={editingData.startTime}
+                                    onChange={(e) => updateEditingField("startTime", e.target.value)}
+                                    className="block w-32 rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                  <span className="text-gray-500">to</span>
+                                  <input
+                                    type="time"
+                                    value={editingData.endTime}
+                                    onChange={(e) => updateEditingField("endTime", e.target.value)}
+                                    className="block w-32 rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <label className="flex items-center text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!editingData.isAvailable}
+                                    onChange={(e) => updateEditingField("isAvailable", e.target.checked)}
+                                    className="h-4 w-4 text-blue-600 focus:ring-2 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                                  />
+                                  Available
+                                </label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <select
+                                  value={editingData.recurrence}
+                                  onChange={(e) => updateEditingField("recurrence", e.target.value)}
+                                  className="block w-32 rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                  {recurrenceOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* Read-only view */}
+                              <div className="flex items-center space-x-2">
+                                <ClockIcon className="h-5 w-5 text-gray-400" />
+                                <span>
+                                  {formatRangeWithNextDay(slot.startTime, slot.endTime)}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  slot.isAvailable 
+                                    ? 'bg-green-100 text-green-800 border border-green-200' 
+                                    : 'bg-red-100 text-red-800 border border-red-200'
+                                }`}>
+                                  {slot.isAvailable ? 'Available' : 'Unavailable'}
+                                </span>
+                              </div>
+                              <span className="text-sm text-gray-500">
+                                {slot.recurrence}
+                              </span>
+                            </>
+                          )}
                         </div>
-                      )}
+                        <div className="flex items-center space-x-3">
+                          {editingSlotId === slot.id ? (
+                            <>
+                              <button
+                                onClick={() => saveEditing(slot.id)}
+                                disabled={isLoading}
+                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEditing(slot)}
+                                className="text-blue-600 hover:text-blue-900"
+                                disabled={isLoading}
+                                title="Edit slot"
+                              >
+                                <PencilSquareIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  console.log("🔴 DELETE BUTTON CLICKED: Slot ID:", slot.id);
+                                  handleDeleteConfirm(slot.id);
+                                }}
+                                className="text-red-600 hover:text-red-900"
+                                disabled={isLoading}
+                                title={
+                                  slot.id.startsWith("temp-")
+                                    ? "Remove unsaved slot"
+                                    : "Delete saved slot"
+                                }
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">
+                  No availability set. Add your first time slot below.
+                </p>
               )}
+
+              {/* Add New Slots */}
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-semibold text-gray-900">
+                    Add New Time Slots
+                  </h4>
+                  <button
+                    onClick={addNewSlot}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Add Slot
+                  </button>
+                </div>
+
+                {newSlots.length > 0 && (
+                  <div className="space-y-4">
+                    {newSlots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        className="rounded-xl p-5 bg-white border border-gray-100 shadow-sm"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {/* Day of Week */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
+                              Day
+                            </label>
+                            <select
+                              value={slot.dayOfWeek}
+                              onChange={(e) =>
+                                updateSlot(slot.id, "dayOfWeek", e.target.value)
+                              }
+                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {days.map((day) => (
+                                <option key={day.id} value={day.id}>
+                                  {day.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Start Time */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
+                              Start Time
+                            </label>
+                            <input
+                              type="time"
+                              value={slot.startTime}
+                              onChange={(e) =>
+                                updateSlot(slot.id, "startTime", e.target.value)
+                              }
+                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+
+                          {/* End Time */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
+                              End Time
+                            </label>
+                            <input
+                              type="time"
+                              value={slot.endTime}
+                              onChange={(e) =>
+                                updateSlot(slot.id, "endTime", e.target.value)
+                              }
+                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+
+                          {/* Availability */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
+                              Availability
+                            </label>
+                            <select
+                              value={slot.isAvailable.toString()}
+                              onChange={(e) =>
+                                updateSlot(
+                                  slot.id,
+                                  "isAvailable",
+                                  e.target.value === "true"
+                                )
+                              }
+                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="true">Available</option>
+                              <option value="false">Unavailable</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Additional Options */}
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
+                              Recurrence
+                            </label>
+                            <select
+                              value={slot.recurrence}
+                              onChange={(e) =>
+                                updateSlot(
+                                  slot.id,
+                                  "recurrence",
+                                  e.target.value
+                                )
+                              }
+                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {recurrenceOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Remove Button */}
+                        <div className="mt-4 flex justify-end">
+                          <button
+                            onClick={() => removeSlot(slot.id)}
+                            className="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          >
+                            Remove Slot
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleUpdateConfirm}
+                        disabled={isLoading}
+                        className="inline-flex items-center px-6 py-3 border border-transparent text-base font-semibold rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoading ? "Saving..." : "Save Availability"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          ))}
+          </div>
         </div>
-
-        <div className="px-6 py-5 bg-gray-50 flex justify-end">
-          <button
-            type="button"
-            className={`
-              inline-flex justify-center items-center py-3 px-6 text-base font-medium rounded-full shadow-sm
-              transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600
-              ${
-                isLoading || newSlots.length === 0
-                  ? "bg-gray-500 text-white cursor-not-allowed opacity-70"
-                  : "bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:from-blue-600 hover:to-blue-800"
-              }
-            `}
-            onClick={handleSave}
-            disabled={isLoading || newSlots.length === 0}
-          >
-            {isLoading ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-2 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Saving...
-              </>
-            ) : (
-              "Save New Availability"
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Help Text */}
-      <div className="bg-blue-50 rounded-xl p-5 text-blue-900 text-sm">
-        <h4 className="font-semibold mb-2">How it works:</h4>
-        <ul className="list-disc list-inside space-y-1.5">
-          <li>View and manage your existing availability slots at the top</li>
-          <li>Add new time slots for each day you're available to teach</li>
-          <li>Choose specific start and end times for each slot</li>
-          <li>Set availability status (available or unavailable)</li>
-          <li>
-            Choose recurrence pattern (one-time, weekly, bi-weekly, or monthly)
-          </li>
-          <li>
-            Students will only be able to book sessions during times marked as
-            available
-          </li>
-          <li>
-            <strong>Cross-midnight slots:</strong> You can create slots that continue into the next day 
-            (e.g., 11:00 PM to 1:00 AM). These will be clearly marked with a blue indicator.
-          </li>
-        </ul>
       </div>
 
       {/* Delete Confirmation Modal */}
-      <Transition.Root show={showDeleteConfirm} as={Fragment}>
+      <Transition appear show={showDeleteConfirm} as={Fragment}>
         <Dialog
           as="div"
           className="relative z-10"
-          onClose={setShowDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
         >
           <Transition.Child
             as={Fragment}
@@ -850,75 +834,67 @@ export default function TutorAvailability() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+            <div className="fixed inset-0 bg-white/50 backdrop-blur-sm" />
           </Transition.Child>
 
-          <div className="fixed inset-0 z-10 overflow-y-auto">
-            <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
                 as={Fragment}
                 enter="ease-out duration-300"
-                enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                enterTo="opacity-100 translate-y-0 sm:scale-100"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
                 leave="ease-in duration-200"
-                leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-                leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
               >
-                <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-                  <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                    <div className="sm:flex sm:items-start">
-                      <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                        <ExclamationTriangleIcon
-                          className="h-6 w-6 text-red-600"
-                          aria-hidden="true"
-                        />
-                      </div>
-                      <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
-                        <Dialog.Title
-                          as="h3"
-                          className="text-base font-semibold leading-6 text-gray-900"
-                        >
-                          Delete Availability Slot
-                        </Dialog.Title>
-                        <div className="mt-2">
-                          <p className="text-sm text-gray-500">
-                            Are you sure you want to delete this availability
-                            slot? This action cannot be undone, and any existing
-                            student bookings may be affected.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900"
+                  >
+                    Delete Availability Slot
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      Are you sure you want to delete this availability slot?
+                      This action cannot be undone.
+                    </p>
                   </div>
-                  <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+
+                  <div className="mt-4 flex justify-end space-x-3">
                     <button
                       type="button"
-                      className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto"
-                      onClick={deleteSlot}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       onClick={() => setShowDeleteConfirm(false)}
                     >
                       Cancel
                     </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      onClick={() => {
+                        console.log("🔴 CONFIRM DELETE BUTTON CLICKED");
+                        executePendingAction();
+                        setShowDeleteConfirm(false);
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </Dialog.Panel>
               </Transition.Child>
             </div>
           </div>
         </Dialog>
-      </Transition.Root>
+      </Transition>
 
       {/* Update Confirmation Modal */}
-      <Transition.Root show={showUpdateConfirm} as={Fragment}>
+      <Transition appear show={showUpdateConfirm} as={Fragment}>
         <Dialog
           as="div"
           className="relative z-10"
-          onClose={setShowUpdateConfirm}
+          onClose={() => setShowUpdateConfirm(false)}
         >
           <Transition.Child
             as={Fragment}
@@ -929,60 +905,50 @@ export default function TutorAvailability() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+            <div className="fixed inset-0 bg-white/50 backdrop-blur-sm" />
           </Transition.Child>
 
-          <div className="fixed inset-0 z-10 overflow-y-auto">
-            <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
                 as={Fragment}
                 enter="ease-out duration-300"
-                enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                enterTo="opacity-100 translate-y-0 sm:scale-100"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
                 leave="ease-in duration-200"
-                leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-                leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
               >
-                <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-                  <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                    <div className="sm:flex sm:items-start">
-                      <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                        <CalendarIcon
-                          className="h-6 w-6 text-blue-600"
-                          aria-hidden="true"
-                        />
-                      </div>
-                      <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
-                        <Dialog.Title
-                          as="h3"
-                          className="text-base font-semibold leading-6 text-gray-900"
-                        >
-                          Update Availability Slot
-                        </Dialog.Title>
-                        <div className="mt-2">
-                          <p className="text-sm text-gray-500">
-                            Are you sure you want to update this availability
-                            slot? This may affect any existing student bookings
-                            during this time.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900"
+                  >
+                    Save Availability
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      Are you sure you want to save these availability slots?
+                    </p>
                   </div>
-                  <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+
+                  <div className="mt-4 flex justify-end space-x-3">
                     <button
                       type="button"
-                      className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto"
-                      onClick={updateExistingSlot}
-                    >
-                      Update
-                    </button>
-                    <button
-                      type="button"
-                      className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       onClick={() => setShowUpdateConfirm(false)}
                     >
                       Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={() => {
+                        executePendingAction();
+                        setShowUpdateConfirm(false);
+                      }}
+                    >
+                      Save
                     </button>
                   </div>
                 </Dialog.Panel>
@@ -990,7 +956,7 @@ export default function TutorAvailability() {
             </div>
           </div>
         </Dialog>
-      </Transition.Root>
+      </Transition>
     </div>
   );
 }

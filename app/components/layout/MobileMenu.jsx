@@ -25,12 +25,12 @@ export default function MobileMenu({
         >
           Subjects
         </a>
-        <Link
-          href="/testimonials"
+        <a
+          href="#testimonials"
           className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700"
         >
           Testimonials
-        </Link>
+        </a>
         <a
           href="#pricing"
           className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700"
@@ -71,6 +71,12 @@ export default function MobileMenu({
                 </div>
               </div>
               <div className="mt-3 space-y-1">
+                <Link
+                  href={`/${user?.role || 'student'}`}
+                  className="flex items-center px-4 py-2 text-base font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md mx-3 mb-2"
+                >
+                  Go to Dashboard
+                </Link>
                 <Link
                   href={`/${user?.role || 'student'}/profile`}
                   className="flex items-center px-4 py-2 text-base font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700"

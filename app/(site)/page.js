@@ -7,6 +7,7 @@ import TrustedBySection from "../components/home/TrustedBySection";
 import FeaturesSection from "../components/home/FeaturesSection";
 import HowItWorksSection from "../components/home/HowItWorksSection";
 import SubjectsSection from "../components/home/SubjectsSection";
+import TestimonialsSection from "../components/home/TestimonialsSection";
 import PricingSection from "../components/PricingSection";
 import CTASection from "../components/home/CTASection";
 import ReactAIWidget from "../components/ai-chat/ReactAIWidget";
@@ -20,6 +21,7 @@ export default function Home() {
       <FeaturesSection />
       <HowItWorksSection />
       <SubjectsSection />
+      <TestimonialsSection />
       <PricingSection />
       <CTASection />
       <Footer />

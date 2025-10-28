@@ -19,15 +19,21 @@ export default function HowItWorksPage() {
                 How IvyWay Works
               </h1>
               <p className="mt-6 max-w-2xl mx-auto text-xl text-gray-500">
-                A simple, effective process to connect you with the perfect
-                tutor for your learning journey.
+                Simple, effective processes to connect you with expert tutors and counselors for your academic success.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Process Steps */}
+        {/* Tutoring Process Steps */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Academic Tutoring Process</h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Get personalized tutoring support in just a few simple steps
+            </p>
+          </div>
+
           <div className="relative">
             <div
               className="absolute inset-0 flex items-center"
@@ -62,179 +68,314 @@ export default function HowItWorksPage() {
           <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-4">
             {/* Step 1 */}
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-xl font-semibold text-gray-900">
                 Tell Us What You Need
-              </h2>
+              </h3>
               <p className="mt-4 text-gray-600">
-                Share your academic goals, the subjects you need help with, and
-                your availability.
+                Share your academic goals, the subjects you need help with, and your availability.
               </p>
             </div>
 
             {/* Step 2 */}
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-xl font-semibold text-gray-900">
                 Match With Your Tutor
-              </h2>
+              </h3>
               <p className="mt-4 text-gray-600">
-                We'll match you with tutors who specialize in your subject and
-                fit your schedule.
+                We'll match you with expert tutors who specialize in your subject and fit your schedule.
               </p>
             </div>
 
             {/* Step 3 */}
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-xl font-semibold text-gray-900">
                 Schedule Sessions
-              </h2>
+              </h3>
               <p className="mt-4 text-gray-600">
-                Book your first session and establish a regular tutoring
-                schedule that works for you.
+                Book your first session and establish a regular tutoring schedule that works for you.
               </p>
             </div>
 
             {/* Step 4 */}
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-xl font-semibold text-gray-900">
                 Learn and Grow
-              </h2>
+              </h3>
               <p className="mt-4 text-gray-600">
-                Meet with your tutor online or in-person and watch your academic
-                performance improve.
+                Meet with your tutor online or in-person and watch your academic performance improve.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Tutoring Options */}
+        {/* College Counseling Process Steps */}
         <div className="bg-gray-50 py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-gray-900">
-                Tutoring Options
-              </h2>
-              <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-500">
-                Flexible learning solutions to fit your lifestyle.
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">College Counseling Process</h2>
+              <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+                Navigate your college journey with expert guidance and personalized support
               </p>
             </div>
 
-            <div className="mt-12 grid gap-8 lg:grid-cols-3">
-              {/* Online Tutoring */}
+            <div className="relative">
+              <div
+                className="absolute inset-0 flex items-center"
+                aria-hidden="true"
+              >
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-between">
+                <div className="bg-gray-50 px-4">
+                  <span className="h-10 w-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold">
+                    1
+                  </span>
+                </div>
+                <div className="bg-gray-50 px-4">
+                  <span className="h-10 w-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold">
+                    2
+                  </span>
+                </div>
+                <div className="bg-gray-50 px-4">
+                  <span className="h-10 w-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold">
+                    3
+                  </span>
+                </div>
+                <div className="bg-gray-50 px-4">
+                  <span className="h-10 w-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold">
+                    4
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-4">
+              {/* Step 1 */}
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Complete Assessment
+                </h3>
+                <p className="mt-4 text-gray-600">
+                  Share your academic background, interests, career goals, and college aspirations with your counselor.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Meet Your Counselor
+                </h3>
+                <p className="mt-4 text-gray-600">
+                  Connect with experienced college counselors who understand your goals and can provide personalized guidance.
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Develop Your Strategy
+                </h3>
+                <p className="mt-4 text-gray-600">
+                  Work together to create a comprehensive college application strategy, including school selection and timeline.
+                </p>
+              </div>
+
+              {/* Step 4 */}
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Get Personalized Guidance
+                </h3>
+                <p className="mt-4 text-gray-600">
+                  Receive tailored advice on college selection, applications, essays, financial aid, and academic planning.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Service Options */}
+        <div className="py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-gray-900">
+                Service Options
+              </h2>
+              <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-500">
+                Flexible learning and guidance solutions to fit your lifestyle and academic needs.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-8 lg:grid-cols-2">
+              {/* Tutoring Services */}
               <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Online Tutoring
+                <div className="bg-blue-600 px-6 py-4">
+                  <h3 className="text-xl font-semibold text-white">
+                    Academic Tutoring Services
                   </h3>
-                  <p className="mt-4 text-gray-600">
-                    Connect with tutors from anywhere in the world through our
-                    secure video platform. All you need is an internet
-                    connection and a device.
+                </div>
+                <div className="p-6">
+                  <p className="text-gray-600 mb-6">
+                    Personalized one-on-one tutoring with expert instructors across all subjects and grade levels.
                   </p>
-                  <ul className="mt-6 space-y-2">
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Interactive whiteboard tools
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Screen sharing capabilities
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Recorded sessions for review
-                      </span>
-                    </li>
-                  </ul>
+                  
+                  <div className="space-y-6">
+                    {/* Online Tutoring */}
+                    <div className="border-l-4 border-blue-500 pl-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">Online Tutoring</h4>
+                      <p className="text-gray-600 mb-3">
+                        Connect with tutors from anywhere through our secure video platform with interactive tools.
+                      </p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Interactive whiteboard tools</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Screen sharing capabilities</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Recorded sessions for review</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* In-Person Tutoring */}
+                    <div className="border-l-4 border-green-500 pl-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">In-Person Tutoring</h4>
+                      <p className="text-gray-600 mb-3">
+                        Meet face-to-face with tutors in your area for a personalized learning experience.
+                      </p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Home or library sessions</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Physical learning materials</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Hands-on learning activities</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Study Skills & Test Prep */}
+                    <div className="border-l-4 border-purple-500 pl-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">Study Skills & Test Prep</h4>
+                      <p className="text-gray-600 mb-3">
+                        Master effective study techniques and excel in standardized tests with proven strategies.
+                      </p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>SAT, ACT, and AP exam preparation</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Memory techniques and note-taking</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Time management and organization</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Test-taking strategies and anxiety management</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* In-Person Tutoring */}
+              {/* Counseling Services */}
               <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    In-Person Tutoring
+                <div className="bg-green-600 px-6 py-4">
+                  <h3 className="text-xl font-semibold text-white">
+                    Counseling Services
                   </h3>
-                  <p className="mt-4 text-gray-600">
-                    Meet face-to-face with tutors in your area for a
-                    personalized learning experience. Available in select
-                    locations.
-                  </p>
-                  <ul className="mt-6 space-y-2">
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Home or library sessions
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Physical learning materials
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Hands-on learning activities
-                      </span>
-                    </li>
-                  </ul>
                 </div>
-              </div>
-
-              {/* Group Tutoring */}
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
                 <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Group Tutoring
-                  </h3>
-                  <p className="mt-4 text-gray-600">
-                    Learn with peers at a more affordable rate. Perfect for
-                    study groups or friends preparing for the same exams.
+                  <p className="text-gray-600 mb-6">
+                    Professional guidance for academic planning, college preparation, and career development.
                   </p>
-                  <ul className="mt-6 space-y-2">
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        2-5 students per session
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Collaborative problem solving
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="h-5 w-5 text-green-500 flex-shrink-0">
-                        ✓
-                      </span>
-                      <span className="ml-2 text-gray-600">
-                        Reduced rates per student
-                      </span>
-                    </li>
-                  </ul>
+                  
+                  <div className="space-y-6">
+                    {/* College Counseling */}
+                    <div className="border-l-4 border-emerald-500 pl-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">College Counseling</h4>
+                      <p className="text-gray-600 mb-3">
+                        Expert guidance for college selection, applications, essays, and financial planning.
+                      </p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>College selection strategy</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Application timeline planning</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Essay review and editing</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Financial aid guidance</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Academic Counseling */}
+                    <div className="border-l-4 border-rose-500 pl-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">Academic Counseling</h4>
+                      <p className="text-gray-600 mb-3">
+                        Personalized academic planning and study strategy development for all grade levels.
+                      </p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Study skills development</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Academic goal setting</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Time management strategies</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="h-4 w-4 text-green-500 flex-shrink-0 mr-2">✓</span>
+                          <span>Learning style assessment</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Session Information */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">Session Details</h4>
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex justify-between">
+                          <span>Session Duration:</span>
+                          <span className="font-medium">30-60 minutes</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Format:</span>
+                          <span className="font-medium">Online or In-Person</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Follow-up:</span>
+                          <span className="font-medium">Progress tracking included</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -258,7 +399,7 @@ export default function HowItWorksPage() {
                 Sign Up Now
               </Link>
               <Link
-                href="/subjects"
+                href="/#subjects"
                 className="ml-4 inline-flex items-center justify-center px-5 py-3 border border-white text-base font-medium rounded-md text-white hover:bg-blue-700"
               >
                 Explore Subjects

@@ -13,7 +13,6 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-  ArrowLeftIcon,
 } from "@heroicons/react/24/outline";
 import { SupportChat } from "../../../components/support";
 
@@ -204,9 +203,6 @@ export default function CounselorSupportPage() {
         {/* Header - aligned with Availability page */}
         <div className="px-0 py-0 sm:px-0 mb-8">
           <div className="flex items-center">
-            <Link href="/counselor" className="mr-4 p-2 text-gray-400 hover:text-gray-600">
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900">Support Center</h1>
               <p className="mt-1 text-sm text-gray-500">

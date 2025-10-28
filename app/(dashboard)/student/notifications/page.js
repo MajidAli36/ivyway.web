@@ -15,33 +15,15 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState("all");
   const {
     notifications,
-    unreadCount,
     loading,
     error,
     fetchNotifications,
-    markAsRead,
-    markAllAsRead,
   } = useNotifications();
 
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  const handleMarkAsRead = async (id) => {
-    try {
-      await markAsRead(id);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAllAsRead();
-    } catch (err) {
-      console.error("Error marking all notifications as read:", err);
-    }
-  };
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -93,24 +75,11 @@ export default function NotificationsPage() {
           <h1 className="text-3xl font-bold text-[#243b53] flex items-center">
             <BellIcon className="h-8 w-8 mr-2 text-blue-500" />
             Notifications
-            {unreadCount > 0 && (
-              <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                {unreadCount} unread
-              </span>
-            )}
           </h1>
           <p className="text-[#4b5563] mt-1">
             Stay updated with your learning journey
           </p>
         </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAllAsRead}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm font-medium"
-          >
-            Mark all as read
-          </button>
-        )}
       </div>
 
       {/* Filters */}
@@ -153,9 +122,7 @@ export default function NotificationsPage() {
             {filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
-                className={`p-4 hover:bg-gray-50 transition-colors flex items-start space-x-4 ${
-                  !notification.isRead ? "bg-blue-50" : ""
-                }`}
+                className="p-4 hover:bg-gray-50 transition-colors flex items-start space-x-4"
               >
                 <div className="flex-shrink-0">
                   {getNotificationIcon(notification.type)}
@@ -165,7 +132,7 @@ export default function NotificationsPage() {
                     {notification.title}
                   </p>
                   <p className="text-sm text-gray-500 mt-1">
-                    {notification.content}
+                    {notification.message}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
                     {new Date(notification.createdAt).toLocaleDateString(
@@ -180,17 +147,6 @@ export default function NotificationsPage() {
                   </p>
                 </div>
                 <div className="flex-shrink-0 flex items-center space-x-2">
-                  {!notification.isRead && (
-                    <span className="inline-block h-2 w-2 rounded-full bg-blue-500"></span>
-                  )}
-                  {!notification.isRead && (
-                    <button
-                      onClick={() => handleMarkAsRead(notification.id)}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Mark as read
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

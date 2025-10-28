@@ -44,7 +44,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  href="/testimonials"
+                  href="/#testimonials"
                   className="text-slate-400 hover:text-white transition-colors"
                 >
                   Success Stories
@@ -66,7 +66,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  href="/subjects"
+                  href="/#subjects"
                   className="text-slate-400 hover:text-white transition-colors"
                 >
                   Subjects We Offer

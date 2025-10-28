@@ -84,7 +84,7 @@ export default function Header({
               Subjects
             </Link>
             <Link
-              href="/testimonials"
+              href="/#testimonials"
               className="text-slate-700 hover:text-blue-600 font-medium transition-colors"
             >
               Testimonials
@@ -106,7 +106,15 @@ export default function Header({
           {/* Conditional rendering based on authentication status */}
           <div className="hidden md:flex items-center space-x-4">
             {isAuthenticated ? (
-              <Menu as="div" className="relative ml-3">
+              <>
+                <Button 
+                  href={`/${user?.role || "student"}`} 
+                  variant="primary"
+                  className="text-sm px-4 py-2"
+                >
+                  Go to Dashboard
+                </Button>
+                <Menu as="div" className="relative ml-3">
                 <div>
                   <Menu.Button className="flex items-center max-w-xs rounded-full bg-white text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:bg-gray-50 cursor-pointer p-1 transition-colors">
                     <span className="sr-only">Open user menu</span>
@@ -179,7 +187,8 @@ export default function Header({
                     </Menu.Item>
                   </Menu.Items>
                 </Transition>
-              </Menu>
+                </Menu>
+              </>
             ) : (
               <>
                 <Button href="/login" variant="secondary">

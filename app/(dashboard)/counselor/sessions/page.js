@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeftIcon,
   CalendarIcon,
   ClockIcon,
   UserIcon,
@@ -189,10 +188,6 @@ const SessionCard = ({ session, onView, onMessage, onJoinMeeting, userRole }) =>
             <div className="flex items-center text-sm text-gray-600">
               <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" />
               {session.subject || "Counseling Session"}
-            </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <CurrencyDollarIcon className="h-4 w-4 mr-2" />
-              {getEarningsText(session)}
             </div>
           </div>
 
@@ -619,8 +614,9 @@ export default function CounselorSessionsPage() {
 
       setNotification({ type: "success", message: "Joining meeting..." });
 
-      // Generate or retrieve meeting room ID
-      const meetingRoomId = session.meetingRoomId || `session_${session.id}_${Date.now()}`;
+      // Generate or retrieve meeting room ID - use consistent ID based on session
+      // This ensures the same session always uses the same meeting room
+      const meetingRoomId = session.meetingRoomId || `session_${session.id}`;
       
       // Navigate to meeting room
       router.push(`/counselor/meetings/room/${meetingRoomId}?sessionId=${session.id}`);
@@ -796,9 +792,6 @@ export default function CounselorSessionsPage() {
         {/* Header - match Availability positioning */}
         <div className="px-4 py-6 sm:px-0">
           <div className="flex items-center">
-            <Link href="/counselor" className="mr-4 p-2 text-gray-400 hover:text-gray-600">
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900">My Sessions</h1>
               <p className="mt-1 text-sm text-gray-500">Manage and track your counseling sessions</p>

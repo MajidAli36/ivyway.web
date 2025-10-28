@@ -9,7 +9,6 @@ import ChatArea from "../../components/shared/ChatArea";
 import EmptyState from "../../components/shared/EmptyState";
 import { authService } from "../../../lib/auth/authService";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 export default function CounselorMessagesPage() {
   // State management
@@ -563,9 +562,6 @@ export default function CounselorMessagesPage() {
       {/* Header - match Availability positioning */}
       <div className="px-4 py-4 border-b border-gray-200 bg-white">
         <div className="flex items-center">
-          <Link href="/counselor" className="mr-4 p-2 text-gray-400 hover:text-gray-600">
-            <ArrowLeftIcon className="h-6 w-6" />
-          </Link>
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
             <p className="mt-1 text-sm text-gray-500">Chat with students and manage conversations</p>

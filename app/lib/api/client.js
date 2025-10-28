@@ -1,4 +1,5 @@
 import { API_CONFIG } from "./config";
+import { dispatchSessionExpiredEvent } from "@/app/utils/pageUtils";
 
 class ApiClient {
   constructor(config = API_CONFIG) {
@@ -76,9 +77,18 @@ class ApiClient {
       // Handle errors
       if (!response.ok) {
         // Special handling for auth errors
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
           console.error("Authentication error:", data);
-          // You might want to redirect to login here
+          // Clear invalid tokens and redirect to login
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("jwt_token");
+            localStorage.removeItem("user");
+            
+            // Only dispatch session expired event if not on auth pages
+            dispatchSessionExpiredEvent(data.message || "Your session has expired. Please sign in again.");
+          }
+        } else if (response.status === 403) {
+          console.error("Authorization error:", data);
         }
 
         throw {

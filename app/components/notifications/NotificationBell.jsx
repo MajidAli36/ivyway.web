@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { BellIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { useNotifications } from "@/app/providers/NotificationProvider";
-import NotificationItem from "./NotificationItem";
+import { useNotificationCount } from "@/app/providers/NotificationProvider";
 import { formatDistanceToNow } from "date-fns";
 
 export default function NotificationBell() {
@@ -11,14 +10,7 @@ export default function NotificationBell() {
   const [recentNotifications, setRecentNotifications] = useState([]);
   const dropdownRef = useRef(null);
   
-  const { 
-    unreadCount, 
-    notifications, 
-    loading, 
-    fetchNotifications, 
-    markAsRead, 
-    markAllAsRead 
-  } = useNotifications();
+  const { unreadCount } = useNotificationCount();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -31,36 +23,6 @@ export default function NotificationBell() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Load recent notifications when dropdown opens
-  useEffect(() => {
-    if (isOpen && notifications.length === 0) {
-      fetchNotifications({ limit: 10 });
-    }
-  }, [isOpen, notifications.length, fetchNotifications]);
-
-  // Get recent notifications (first 5)
-  useEffect(() => {
-    setRecentNotifications(notifications.slice(0, 5));
-  }, [notifications]);
-
-  const handleNotificationClick = async (notification) => {
-    if (!notification.isRead) {
-      try {
-        await markAsRead(notification.id);
-      } catch (error) {
-        console.error("Error marking notification as read:", error);
-      }
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAllAsRead();
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -84,66 +46,21 @@ export default function NotificationBell() {
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900">Notifications</h3>
-              <div className="flex items-center space-x-2">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={handleMarkAllAsRead}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    Mark all read
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
-            {loading ? (
-              <div className="p-4 text-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-2 text-sm text-gray-500">Loading notifications...</p>
-              </div>
-            ) : recentNotifications.length === 0 ? (
-              <div className="p-4 text-center">
-                <BellIcon className="mx-auto h-8 w-8 text-gray-400" />
-                <p className="mt-2 text-sm text-gray-500">No notifications</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {recentNotifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification)}
-                    className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <NotificationItem 
-                      notification={notification} 
-                      compact={true}
-                      showActions={false}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {notifications.length > 5 && (
-            <div className="p-4 border-t border-gray-200">
-              <a
-                href="/teacher/notifications"
-                className="block text-center text-sm text-blue-600 hover:text-blue-800"
-                onClick={() => setIsOpen(false)}
-              >
-                View all notifications
-              </a>
+            <div className="p-4 text-center">
+              <BellIcon className="mx-auto h-8 w-8 text-gray-400" />
+              <p className="mt-2 text-sm text-gray-500">Click notifications in sidebar to view all</p>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

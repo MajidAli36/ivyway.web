@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from "react";
 import { notifications } from "../lib/api/endpoints";
 import { useSocket } from "./SocketProvider";
+import { useAuth } from "./AuthProvider";
 
 // Action types
 const actionTypes = {
@@ -111,6 +112,7 @@ const NotificationContext = createContext();
 export function NotificationProvider({ children }) {
   const [state, dispatch] = useReducer(notificationReducer, initialState);
   const { socket, connected } = useSocket();
+  const { user, isAuthenticated } = useAuth();
 
   // Action creators
   const setLoading = useCallback((loading) => {
@@ -244,13 +246,17 @@ export function NotificationProvider({ children }) {
     };
   }, [socket, connected, fetchNotifications]);
 
-  // Initial fetch of unread count
+  // Initial fetch of unread count (only when authenticated)
   useEffect(() => {
-    fetchUnreadCount();
-  }, [fetchUnreadCount]);
+    if (isAuthenticated && user) {
+      fetchUnreadCount();
+    }
+  }, [fetchUnreadCount, isAuthenticated, user]);
 
-  // Refresh count when tab becomes visible
+  // Refresh count when tab becomes visible (only when authenticated)
   useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         fetchUnreadCount();
@@ -259,10 +265,12 @@ export function NotificationProvider({ children }) {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchUnreadCount]);
+  }, [fetchUnreadCount, isAuthenticated, user]);
 
-  // Refresh count every 30 seconds when tab is active
+  // Refresh count every 30 seconds when tab is active (only when authenticated)
   useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    
     const interval = setInterval(() => {
       if (!document.hidden) {
         fetchUnreadCount();
@@ -270,7 +278,7 @@ export function NotificationProvider({ children }) {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+  }, [fetchUnreadCount, isAuthenticated, user]);
 
   const value = {
     ...state,

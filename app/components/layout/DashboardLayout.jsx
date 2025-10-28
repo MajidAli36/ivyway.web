@@ -29,7 +29,7 @@ import {
 import Image from "next/image";
 import { ChartArea, ChartBar, ListCollapse } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
-import { useNotificationCount } from "@/app/providers/NotificationProvider";
+import { useNotificationCount, useNotifications } from "@/app/providers/NotificationProvider";
 import { useMessageCount } from "@/app/hooks/useMessageCount";
 import { SupportBot } from "../support";
 import NotificationBell from "../notifications/NotificationBell";
@@ -65,11 +65,24 @@ export default function DashboardLayout({ children, navigation, userRole }) {
   const pathname = usePathname();
   const { logout } = useAuth();
   const { unreadCount } = useNotificationCount();
+  const { markAllAsRead } = useNotifications();
   const { unreadCount: messageCount } = useMessageCount();
 
   // Function to check if a nav item is active
   const isActive = (href) => {
     return href === pathname;
+  };
+
+  // Function to handle navigation with special logic for notifications
+  const handleNavigation = async (href, item) => {
+    // If navigating to notifications, mark all as read
+    if (item.icon === "BellIcon" && unreadCount > 0) {
+      try {
+        await markAllAsRead();
+      } catch (error) {
+        console.error("Error marking notifications as read:", error);
+      }
+    }
   };
 
   return (
@@ -147,7 +160,10 @@ export default function DashboardLayout({ children, navigation, userRole }) {
                                 ? "bg-blue-100 text-blue-800"
                                 : "text-slate-700 hover:bg-blue-50 hover:text-blue-600"
                             }`}
-                            onClick={() => setSidebarOpen(false)}
+                            onClick={() => {
+                              setSidebarOpen(false);
+                              handleNavigation(item.href, item);
+                            }}
                           >
                             <div
                               className={
@@ -244,6 +260,7 @@ export default function DashboardLayout({ children, navigation, userRole }) {
                           ? "bg-blue-100 text-blue-800"
                           : "text-slate-700 hover:bg-blue-50 hover:text-blue-600"
                       }`}
+                      onClick={() => handleNavigation(item.href, item)}
                     >
                       <div
                         className={

@@ -128,7 +128,6 @@ export default function CounselorAvailability() {
                   isAvailable: slot.isAvailable !== false,
                   recurrence: slot.recurrence || "weekly",
                   sessionTypes: slot.sessionTypes || ["30min", "60min"],
-                  maxSessionsPerDay: slot.maxSessionsPerDay || 8,
                 });
               });
             }
@@ -162,7 +161,6 @@ export default function CounselorAvailability() {
       isAvailable: defaultIsAvailable,
       recurrence: defaultRecurrence,
       sessionTypes: ["30min", "60min"],
-      maxSessionsPerDay: 8,
     };
 
     setNewSlots((prev) => [...prev, newSlot]);
@@ -217,7 +215,6 @@ export default function CounselorAvailability() {
       endTime: slot.endTime,
       isAvailable: slot.isAvailable !== false,
       sessionTypes: Array.isArray(slot.sessionTypes) ? slot.sessionTypes : ["30min", "60min"],
-      maxSessionsPerDay: slot.maxSessionsPerDay || 8,
       recurrence: slot.recurrence || "weekly",
     });
   };
@@ -248,7 +245,6 @@ export default function CounselorAvailability() {
         endTime: String(editingData.endTime).substring(0, 5),
         isAvailable: Boolean(editingData.isAvailable),
         sessionTypes: editingData.sessionTypes,
-        maxSessionsPerDay: editingData.maxSessionsPerDay,
       };
 
       const result = await safeApiCall(() => availabilityAPI.update(slotId, payload), {
@@ -272,7 +268,6 @@ export default function CounselorAvailability() {
                 endTime: payload.endTime,
                 isAvailable: payload.isAvailable,
                 sessionTypes: payload.sessionTypes,
-                maxSessionsPerDay: payload.maxSessionsPerDay,
               }
             : s
         )
@@ -386,7 +381,6 @@ export default function CounselorAvailability() {
         isAvailable: slot.isAvailable,
         recurrence: slot.recurrence,
         sessionTypes: slot.sessionTypes,
-        maxSessionsPerDay: slot.maxSessionsPerDay,
         advanceBookingDays: 14, // Always 14 days for counselors
       }));
 
@@ -433,7 +427,6 @@ export default function CounselorAvailability() {
           isAvailable: slotData.isAvailable,
           recurrence: slotData.recurrence,
           sessionTypes: slotData.sessionTypes,
-          maxSessionsPerDay: slotData.maxSessionsPerDay,
         };
       });
 
@@ -533,7 +526,6 @@ export default function CounselorAvailability() {
                 isAvailable: slot.isAvailable !== false,
                 recurrence: slot.recurrence || "weekly",
                 sessionTypes: slot.sessionTypes || ["30min", "60min"],
-                maxSessionsPerDay: slot.maxSessionsPerDay || 8,
               });
             });
           }
@@ -564,7 +556,7 @@ export default function CounselorAvailability() {
           <div className="mt-6">
             <Link
               href="/login"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               Go to Login
             </Link>
@@ -582,12 +574,6 @@ export default function CounselorAvailability() {
         <div className="px-4 py-6 sm:px-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <Link
-                href="/counselor"
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600"
-              >
-                <ArrowLeftIcon className="h-6 w-6" />
-              </Link>
               <div className="flex-1">
                 <h1 className="text-3xl font-bold text-gray-900">
                   Counselor Availability
@@ -612,15 +598,18 @@ export default function CounselorAvailability() {
 
         {/* Success Message */}
         {showSuccessMessage && (
-          <div className="mb-4 rounded-md bg-green-50 p-4">
+          <div className="mb-4 rounded-md bg-green-50 border border-green-200 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
-                <CalendarIcon className="h-5 w-5 text-green-400" />
+                <CalendarIcon className="h-5 w-5 text-green-500" />
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-green-800">
                   Availability updated successfully!
                 </h3>
+                <p className="mt-1 text-sm text-green-700">
+                  Your availability schedule has been saved and is now active.
+                </p>
               </div>
             </div>
           </div>
@@ -628,10 +617,10 @@ export default function CounselorAvailability() {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mb-4 rounded-md bg-red-50 p-4">
+          <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
-                <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+                <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-red-800">
@@ -719,17 +708,6 @@ export default function CounselorAvailability() {
                                   ))}
                                 </div>
                               </div>
-                              <span className="text-sm text-gray-500">
-                                Max per day:
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="20"
-                                  value={editingData.maxSessionsPerDay}
-                                  onChange={(e) => updateEditingField("maxSessionsPerDay", parseInt(e.target.value))}
-                                  className="ml-2 w-20 rounded-lg border-gray-200 bg-white py-1 px-2 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                              </span>
                             </>
                           ) : (
                             <>
@@ -746,9 +724,6 @@ export default function CounselorAvailability() {
                                   {slot.sessionTypes?.join(", ") || "30min, 60min"}
                                 </span>
                               </div>
-                              <span className="text-sm text-gray-500">
-                                Max: {slot.maxSessionsPerDay} sessions/day
-                              </span>
                             </>
                           )}
                         </div>
@@ -758,13 +733,13 @@ export default function CounselorAvailability() {
                               <button
                                 onClick={() => saveEditing(slot.id)}
                                 disabled={isLoading}
-                                className="text-green-600 hover:text-green-800 text-sm font-medium"
+                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                               >
                                 Save
                               </button>
                               <button
                                 onClick={cancelEditing}
-                                className="text-gray-600 hover:text-gray-800 text-sm font-medium"
+                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                               >
                                 Cancel
                               </button>
@@ -815,7 +790,7 @@ export default function CounselorAvailability() {
                   </h4>
                   <button
                     onClick={addNewSlot}
-                    className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow hover:from-blue-700 hover:to-indigo-700"
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
                     <PlusIcon className="h-4 w-4 mr-2" />
                     Add Slot
@@ -913,7 +888,7 @@ export default function CounselorAvailability() {
                                     className="h-4 w-4 text-blue-600 focus:ring-2 focus:ring-blue-500 border-gray-300 rounded"
                                   />
                                   <span className="ml-2 text-sm text-gray-700">
-                                    {type.label} (${type.price})
+                                    {type.label}
                                   </span>
                                 </label>
                               ))}
@@ -922,27 +897,7 @@ export default function CounselorAvailability() {
                         </div>
 
                         {/* Additional Options */}
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
-                              Max Sessions Per Day
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="20"
-                              value={slot.maxSessionsPerDay}
-                              onChange={(e) =>
-                                updateSlot(
-                                  slot.id,
-                                  "maxSessionsPerDay",
-                                  parseInt(e.target.value)
-                                )
-                              }
-                              className="block w-full rounded-lg border-gray-200 bg-white py-2.5 px-3 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-
+                        <div className="mt-4">
                           <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1 tracking-wide">
                               Recurrence
@@ -971,7 +926,7 @@ export default function CounselorAvailability() {
                         <div className="mt-4 flex justify-end">
                           <button
                             onClick={() => removeSlot(slot.id)}
-                            className="text-red-600 hover:text-red-700 text-sm font-medium"
+                            className="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                           >
                             Remove Slot
                           </button>
@@ -984,7 +939,7 @@ export default function CounselorAvailability() {
                       <button
                         onClick={handleUpdateConfirm}
                         disabled={isLoading}
-                        className="inline-flex items-center px-6 py-3 rounded-lg text-base font-semibold shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                        className="inline-flex items-center px-6 py-3 border border-transparent text-base font-semibold rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isLoading ? "Saving..." : "Save Availability"}
                       </button>
@@ -1044,14 +999,14 @@ export default function CounselorAvailability() {
                   <div className="mt-4 flex justify-end space-x-3">
                     <button
                       type="button"
-                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       onClick={() => setShowDeleteConfirm(false)}
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
-                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                       onClick={() => {
                         console.log("🔴 CONFIRM DELETE BUTTON CLICKED");
                         executePendingAction();
@@ -1114,14 +1069,14 @@ export default function CounselorAvailability() {
                   <div className="mt-4 flex justify-end space-x-3">
                     <button
                       type="button"
-                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       onClick={() => setShowUpdateConfirm(false)}
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
-                      className="inline-flex justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       onClick={() => {
                         executePendingAction();
                         setShowUpdateConfirm(false);

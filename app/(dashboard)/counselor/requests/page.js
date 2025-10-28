@@ -5,7 +5,6 @@ import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeftIcon,
   CalendarIcon,
   ClockIcon,
   UserIcon,
@@ -144,12 +143,6 @@ function RequestCard({ request, onAccept, onDecline }) {
               <div className="text-sm">
                 <span className="font-medium text-gray-900">Subject:</span>{" "}
                 <span className="text-gray-600">{request.subject || request.topic || "—"}</span>
-              </div>
-              <div className="text-sm">
-                <span className="font-medium text-gray-900">Earnings:</span>{" "}
-                <span className="text-green-600 font-medium">
-                  ${request.counselorEarnings}
-                </span>
               </div>
             </div>
           </div>
@@ -297,17 +290,9 @@ function RequestModal({ isOpen, closeModal, request, onAccept, onDecline, startD
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Duration</p>
-                      <p className="text-sm text-gray-600">{request.sessionType}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Earnings</p>
-                      <p className="text-sm text-green-600 font-medium">
-                        ${request.counselorEarnings}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Duration</p>
+                    <p className="text-sm text-gray-600">{request.sessionType}</p>
                   </div>
 
                   <div>
@@ -720,12 +705,6 @@ export default function CounselorRequestsPage() {
         <div className="px-4 py-6 sm:px-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <Link
-                href="/counselor"
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600"
-              >
-                <ArrowLeftIcon className="h-6 w-6" />
-              </Link>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
                   Session Requests
