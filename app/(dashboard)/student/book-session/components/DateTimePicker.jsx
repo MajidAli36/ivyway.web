@@ -24,7 +24,7 @@ export default function DateTimePicker({
   const router = useRouter();
   const [availableDates, setAvailableDates] = useState([]);
   const [availableTimes, setAvailableTimes] = useState([]);
-  const [selectedDuration, setSelectedDuration] = useState(duration || 60);
+  const [selectedDuration, setSelectedDuration] = useState(duration || null);
   const [availabilityData, setAvailabilityData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -94,7 +94,7 @@ export default function DateTimePicker({
 
   // Keep internal duration in sync with parent-provided duration
   useEffect(() => {
-    setSelectedDuration(duration || 60);
+    setSelectedDuration(duration || null);
   }, [duration]);
 
   // Normalize incoming selected time (label like "3:00 PM" or value like "15:00")
@@ -131,8 +131,33 @@ export default function DateTimePicker({
 
     const dates = [];
     const today = new Date();
+    const oneTimeSlots = [];
+    const weeklySlots = [];
+    const biweeklySlots = [];
+    const monthlySlots = [];
     
     console.log("Processing availability data:", availabilityData);
+    
+    // Separate slots by recurrence type
+    availabilityData.forEach(slot => {
+      if (!slot || typeof slot !== 'object') return;
+      
+      console.log(`Processing slot with recurrence: ${slot.recurrence}, createdAt: ${slot.createdAt}`);
+      
+      if (slot.recurrence === 'one-time') {
+        oneTimeSlots.push(slot);
+      } else if (slot.recurrence === 'weekly' || !slot.recurrence) {
+        weeklySlots.push(slot);
+      } else if (slot.recurrence === 'biweekly' || slot.recurrence === 'bi-weekly') {
+        biweeklySlots.push(slot);
+        console.log(`Added biweekly slot:`, slot);
+      } else if (slot.recurrence === 'monthly') {
+        monthlySlots.push(slot);
+      }
+    });
+    
+    console.log(`Found ${oneTimeSlots.length} one-time slots, ${weeklySlots.length} weekly slots, ${biweeklySlots.length} biweekly slots, ${monthlySlots.length} monthly slots`);
+    console.log("Biweekly slots:", biweeklySlots);
     
     // Check next 30 days for availability
     for (let i = 0; i < 30; i++) {
@@ -141,22 +166,127 @@ export default function DateTimePicker({
       
       console.log(`Checking date ${format(checkDate, 'yyyy-MM-dd')} (day ${dayOfWeek})`);
       
-      // Check if tutor has availability on this day
-      const hasAvailability = availabilityData.some(slot => {
-        if (!slot || typeof slot !== 'object') return false;
-        
-        const slotDayOfWeek = Number(slot.dayOfWeek);
-        const isAvailable = slot.isAvailable !== false;
-        const hasSessionType = slot.sessionTypes && slot.sessionTypes.length > 0;
-        
-        console.log(`  Slot: dayOfWeek=${slotDayOfWeek}, isAvailable=${isAvailable}, sessionTypes=${slot.sessionTypes}, matches=${slotDayOfWeek === dayOfWeek}`);
-        
-        return slotDayOfWeek === dayOfWeek && isAvailable && hasSessionType;
-      });
+      let shouldIncludeDate = false;
       
-      if (hasAvailability) {
+      // First, check for one-time availability on this exact date
+      if (oneTimeSlots.length > 0) {
+        const oneTimeMatch = oneTimeSlots.find(slot => {
+          if (slot.createdAt) {
+            // Parse the creation date to determine which day of week it was intended for
+            const slotCreatedDate = new Date(slot.createdAt);
+            const daysSinceCreation = i;
+            const createdDayOfWeek = getDay(slotCreatedDate);
+            const targetDayOfWeek = Number(slot.dayOfWeek);
+            
+            // Check if this slot should appear on this specific occurrence
+            if (slotCreatedDate <= today) {
+              // For past dates, find the next occurrence
+              const daysUntilTarget = (targetDayOfWeek - createdDayOfWeek + 7) % 7;
+              const nextOccurrenceDate = addDays(slotCreatedDate, daysUntilTarget === 0 ? 7 : daysUntilTarget);
+              return isSameDay(checkDate, nextOccurrenceDate);
+            }
+          }
+          return false;
+        });
+        
+        if (oneTimeMatch) {
+          // Check if this date matches the intended day of week for one-time slots
+          const slotDayOfWeek = Number(oneTimeMatch.dayOfWeek);
+          const isAvailable = oneTimeMatch.isAvailable !== false;
+          const hasSessionType = oneTimeMatch.sessionTypes && oneTimeMatch.sessionTypes.length > 0;
+          
+          if (slotDayOfWeek === dayOfWeek && isAvailable && hasSessionType) {
+            shouldIncludeDate = true;
+            console.log(`  ✓ Added ONE-TIME date: ${format(checkDate, 'yyyy-MM-dd')} for slot ${oneTimeMatch.id}`);
+            // Remove this one-time slot so it doesn't appear again
+            const index = oneTimeSlots.indexOf(oneTimeMatch);
+            if (index > -1) oneTimeSlots.splice(index, 1);
+          }
+        }
+      }
+      
+      // For weekly slots, show recurring availability
+      if (!shouldIncludeDate && weeklySlots.length > 0) {
+        const hasWeeklyAvailability = weeklySlots.some(slot => {
+          const slotDayOfWeek = Number(slot.dayOfWeek);
+          const isAvailable = slot.isAvailable !== false;
+          const hasSessionType = slot.sessionTypes && slot.sessionTypes.length > 0;
+          
+          console.log(`  Weekly Slot: dayOfWeek=${slotDayOfWeek}, isAvailable=${isAvailable}, sessionTypes=${slot.sessionTypes}, matches=${slotDayOfWeek === dayOfWeek}`);
+          
+          return slotDayOfWeek === dayOfWeek && isAvailable && hasSessionType;
+        });
+        
+        if (hasWeeklyAvailability) {
+          shouldIncludeDate = true;
+          console.log(`  ✓ Added WEEKLY date: ${format(checkDate, 'yyyy-MM-dd')}`);
+        }
+      }
+      
+      // For biweekly slots, show every 2 weeks
+      if (!shouldIncludeDate && biweeklySlots.length > 0) {
+        const hasBiweeklyAvailability = biweeklySlots.some(slot => {
+          const slotDayOfWeek = Number(slot.dayOfWeek);
+          const isAvailable = slot.isAvailable !== false;
+          const hasSessionType = !slot.sessionTypes || slot.sessionTypes.length > 0;
+
+          if (slotDayOfWeek === dayOfWeek && isAvailable && hasSessionType) {
+            // Anchor on the first upcoming target weekday from today
+            const todayDOW = getDay(today);
+            const daysUntilTarget = (slotDayOfWeek - todayDOW + 7) % 7; // 0..6
+            // Convert our current offset i into weeks since the first target occurrence
+            const deltaDays = i - daysUntilTarget;
+            const onOrAfterFirst = deltaDays >= 0;
+            const isWholeWeeks = deltaDays % 7 === 0;
+            const weeksSinceFirst = isWholeWeeks ? deltaDays / 7 : -1;
+            const isBiweeklyDate = onOrAfterFirst && isWholeWeeks && weeksSinceFirst % 2 === 0;
+
+            console.log(
+              `  Biweekly Slot: targetDOW=${slotDayOfWeek}, todayDOW=${todayDOW}, daysUntilTarget=${daysUntilTarget}, i=${i}, deltaDays=${deltaDays}, weeksSinceFirst=${weeksSinceFirst}, isBiweeklyDate=${isBiweeklyDate}`
+            );
+
+            return isBiweeklyDate;
+          }
+          return false;
+        });
+
+        if (hasBiweeklyAvailability) {
+          shouldIncludeDate = true;
+          console.log(`  ✓ Added BIWEEKLY date: ${format(checkDate, 'yyyy-MM-dd')}`);
+        }
+      }
+      
+      // For monthly slots, show on the same day of month
+      if (!shouldIncludeDate && monthlySlots.length > 0) {
+        const hasMonthlyAvailability = monthlySlots.some(slot => {
+          const slotDayOfWeek = Number(slot.dayOfWeek);
+          const isAvailable = slot.isAvailable !== false;
+          const hasSessionType = slot.sessionTypes && slot.sessionTypes.length > 0;
+          
+          if (slot.createdAt && slotDayOfWeek === dayOfWeek && isAvailable && hasSessionType) {
+            // Calculate if this date falls on a monthly schedule
+            const slotCreatedDate = new Date(slot.createdAt);
+            const createdDay = slotCreatedDate.getDate();
+            const checkDay = checkDate.getDate();
+            
+            // Check if same day of month
+            const isMonthlyDate = createdDay === checkDay;
+            
+            console.log(`  Monthly Slot: dayOfWeek=${slotDayOfWeek}, createdDay=${createdDay}, checkDay=${checkDay}, isMonthlyDate=${isMonthlyDate}`);
+            
+            return isMonthlyDate;
+          }
+          return false;
+        });
+        
+        if (hasMonthlyAvailability) {
+          shouldIncludeDate = true;
+          console.log(`  ✓ Added MONTHLY date: ${format(checkDate, 'yyyy-MM-dd')}`);
+        }
+      }
+      
+      if (shouldIncludeDate) {
         dates.push(checkDate);
-        console.log(`  ✓ Added date: ${format(checkDate, 'yyyy-MM-dd')}`);
       }
       
       // Limit to 14 available dates to keep the UI manageable
@@ -380,11 +510,46 @@ export default function DateTimePicker({
 
   return (
     <div className="space-y-8">
+      {/* Duration selector at the top */}
       <div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-6">
-          Select Date
-        </h3>
-        {loading ? (
+        <h4 className="text-lg font-semibold text-gray-900 mb-4">Session Duration</h4>
+        <div className="flex space-x-3">
+          {[30, 60].map((mins) => (
+            <button
+              key={mins}
+              onClick={() => setSelectedDuration(mins)}
+              className={`px-4 py-2 rounded-lg border-2 transition-all duration-200 ${
+                selectedDuration === mins
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-gray-200 hover:border-blue-300"
+              }`}
+            >
+              {mins} min
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!selectedDuration && (
+        <div className="text-center py-12 bg-blue-50 rounded-xl border-2 border-blue-200">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CalendarIcon className="w-8 h-8 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Please Select Session Duration
+          </h3>
+          <p className="text-gray-600">
+            Choose a duration (30 or 60 minutes) above to view available dates
+          </p>
+        </div>
+      )}
+
+      {selectedDuration && (
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-6">
+            Select Date
+          </h3>
+          {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600"></div>
             <p className="mt-4 text-gray-600 font-medium">
@@ -432,9 +597,10 @@ export default function DateTimePicker({
             </p>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
-      {date && (
+      {selectedDuration && date && (
         <div>
           <h3 className="text-xl font-semibold text-gray-900 mb-6">
             Select Time
@@ -483,26 +649,6 @@ export default function DateTimePicker({
           )}
         </div>
       )}
-
-      {/* Duration selector */}
-      <div>
-        <h4 className="text-lg font-semibold text-gray-900 mb-4">Session Duration</h4>
-        <div className="flex space-x-3">
-          {[30, 60, 90, 120].map((mins) => (
-            <button
-              key={mins}
-              onClick={() => setSelectedDuration(mins)}
-              className={`px-4 py-2 rounded-lg border-2 transition-all duration-200 ${
-                selectedDuration === mins
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-blue-300"
-              }`}
-            >
-              {mins} min
-            </button>
-          ))}
-        </div>
-      </div>
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4">

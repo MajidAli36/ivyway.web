@@ -513,6 +513,15 @@ export default function BookingWizard({ onComplete }) {
     try {
       const response = await apiClient.post("/bookings", bookingPayload);
       const booking = response.data;
+      
+      // Check if payment is required
+      if (response.status === 402 || !booking.isPaid) {
+        // Payment is required - show payment modal
+        setCreatedBooking(booking);
+        setShowPaymentModal(true);
+        return;
+      }
+      
       localStorage.removeItem("pendingBooking");
       localStorage.setItem("currentBooking", JSON.stringify(booking));
       if (booking.bookingId) {
@@ -566,6 +575,22 @@ export default function BookingWizard({ onComplete }) {
       if (String(status) === "401") {
         localStorage.setItem("pendingBooking", JSON.stringify(bookingData));
         router.push("/login?redirect=/student/book-session");
+        return;
+      }
+
+      // Payment required (402)
+      if (String(status) === "402") {
+        const bookingDetails = err?.response?.data?.bookingData || bookingPayload;
+        // Show payment modal with booking details
+        const tempBooking = {
+          ...bookingDetails,
+          bookingId: `temp-${Date.now()}`,
+          requiresPayment: true,
+          price: err?.response?.data?.price || sessionPriceInCents / 100,
+          paymentAmount: sessionPriceInCents
+        };
+        setCreatedBooking(tempBooking);
+        setShowPaymentModal(true);
         return;
       }
 
@@ -726,21 +751,21 @@ export default function BookingWizard({ onComplete }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
         {/* Reschedule/Change Plan Banner */}
         {(bookingData.rescheduleSessionId ||
           bookingData.changePlanSessionId) && (
-          <div className="px-4 py-6 sm:px-0">
+          <div className="mb-4 sm:mb-6">
             <div
-              className={`bg-gradient-to-r rounded-xl p-6 border-2 ${
+              className={`bg-gradient-to-r rounded-xl p-4 sm:p-6 border-2 ${
                 bookingData.rescheduleSessionId
                   ? "from-blue-50 to-indigo-50 border-blue-200"
                   : "from-purple-50 to-pink-50 border-purple-200"
               }`}
             >
-              <div className="flex items-center">
+              <div className="flex items-start sm:items-center">
                 <div
-                  className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
+                  className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center ${
                     bookingData.rescheduleSessionId
                       ? "bg-blue-100"
                       : "bg-purple-100"
@@ -748,7 +773,7 @@ export default function BookingWizard({ onComplete }) {
                 >
                   {bookingData.rescheduleSessionId ? (
                     <svg
-                      className="w-6 h-6 text-blue-600"
+                      className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -762,7 +787,7 @@ export default function BookingWizard({ onComplete }) {
                     </svg>
                   ) : (
                     <svg
-                      className="w-6 h-6 text-purple-600"
+                      className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -776,9 +801,9 @@ export default function BookingWizard({ onComplete }) {
                     </svg>
                   )}
                 </div>
-                <div className="ml-4">
+                <div className="ml-3 sm:ml-4 flex-1">
                   <h3
-                    className={`text-lg font-semibold ${
+                    className={`text-base sm:text-lg font-semibold ${
                       bookingData.rescheduleSessionId
                         ? "text-blue-900"
                         : "text-purple-900"
@@ -789,7 +814,7 @@ export default function BookingWizard({ onComplete }) {
                       : "Changing Plan"}
                   </h3>
                   <p
-                    className={`text-sm ${
+                    className={`text-xs sm:text-sm mt-1 ${
                       bookingData.rescheduleSessionId
                         ? "text-blue-700"
                         : "text-purple-700"
@@ -806,11 +831,11 @@ export default function BookingWizard({ onComplete }) {
         )}
 
         {/* Progress Steps */}
-        <div className="px-4 py-6">
-          <div className="bg-white shadow-lg rounded-2xl p-4 sm:p-6 border border-gray-100">
+        <div className="mb-4 sm:mb-6">
+          <div className="bg-white shadow-lg rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-6 border border-gray-100">
             <nav aria-label="Progress">
               {/* Mobile: Vertical Timeline */}
-              <div className="block sm:hidden">
+              <div className="block md:hidden">
                 <div className="space-y-6">
                   {steps.map((step, stepIdx) => (
                     <div
@@ -914,10 +939,89 @@ export default function BookingWizard({ onComplete }) {
                 </div>
               </div>
 
-              {/* Desktop: Horizontal Timeline */}
-              <div className="hidden sm:block">
+              {/* Tablet: Compact Horizontal Timeline */}
+              <div className="hidden md:block lg:hidden">
                 <div className="relative">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-start overflow-x-auto pb-4 gap-2">
+                    {steps.map((step, stepIdx) => (
+                      <div
+                        key={step.id}
+                        className={`flex flex-col items-center text-center relative flex-shrink-0 ${
+                          canNavigateTo(stepIdx)
+                            ? "cursor-pointer"
+                            : "cursor-default"
+                        }`}
+                        onClick={() => handleGoToStep(stepIdx)}
+                        role="button"
+                        style={{ minWidth: "90px" }}
+                      >
+                        {/* Step Circle */}
+                        <div className="relative mb-2 z-10">
+                          <div
+                            className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                              currentStep >= stepIdx
+                                ? "bg-blue-600 border-blue-600 text-white shadow-lg"
+                                : "bg-white border-gray-300 text-gray-400"
+                            }`}
+                          >
+                            {currentStep > stepIdx ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            ) : (
+                              <span className="text-xs font-bold">
+                                {stepIdx + 1}
+                              </span>
+                            )}
+                          </div>
+                          {currentStep === stepIdx && (
+                            <div className="absolute -inset-1 rounded-full bg-blue-100 animate-pulse"></div>
+                          )}
+                        </div>
+
+                        {/* Step Label */}
+                        <div className="w-full">
+                          <div
+                            className={`text-xs font-semibold transition-colors duration-300 mb-1 ${
+                              currentStep >= stepIdx
+                                ? "text-blue-600"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            {step.name}
+                          </div>
+                          {stepIdx === 0 && selectedService && (
+                            <div className="text-[10px] text-blue-500 font-medium">
+                              {selectedService === ServiceTypes.COUNSELING ? "Counseling" : "Tutoring"}
+                            </div>
+                          )}
+                          {stepIdx === 1 && selectedPlan && (
+                            <div className="text-[10px] text-blue-500 font-medium truncate">
+                              {selectedPlan.name.length > 12 
+                                ? selectedPlan.name.substring(0, 12) + '...'
+                                : selectedPlan.name}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Desktop: Full Horizontal Timeline */}
+              <div className="hidden lg:block">
+                <div className="relative">
+                  <div className="flex items-center justify-between px-2">
                     {steps.map((step, stepIdx) => (
                       <div
                         key={step.id}
@@ -936,13 +1040,13 @@ export default function BookingWizard({ onComplete }) {
                         }
                         style={{
                           width: `${100 / steps.length}%`,
-                          minWidth: "100px",
+                          minWidth: "80px",
                         }}
                       >
                         {/* Step Circle */}
-                        <div className="relative mb-3 z-10">
+                        <div className="relative mb-2 sm:mb-3 z-10">
                           <div
-                            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                            className={`flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                               currentStep >= stepIdx
                                 ? "bg-blue-600 border-blue-600 text-white shadow-lg"
                                 : "bg-white border-gray-300 text-gray-400"
@@ -951,7 +1055,7 @@ export default function BookingWizard({ onComplete }) {
                             {currentStep > stepIdx ? (
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                className="h-6 w-6"
+                                className="h-5 w-5 lg:h-6 lg:w-6"
                                 viewBox="0 0 20 20"
                                 fill="currentColor"
                               >
@@ -962,7 +1066,7 @@ export default function BookingWizard({ onComplete }) {
                                 />
                               </svg>
                             ) : (
-                              <span className="text-base font-bold">
+                              <span className="text-sm lg:text-base font-bold">
                                 {stepIdx + 1}
                               </span>
                             )}
@@ -975,9 +1079,9 @@ export default function BookingWizard({ onComplete }) {
                         </div>
 
                         {/* Step Label */}
-                        <div className="w-full px-2">
+                        <div className="w-full">
                           <div
-                            className={`text-sm font-semibold transition-colors duration-300 mb-1 text-center whitespace-nowrap ${
+                            className={`text-xs lg:text-sm font-semibold transition-colors duration-300 mb-1 text-center ${
                               currentStep >= stepIdx
                                 ? "text-blue-600"
                                 : "text-gray-400"
@@ -1001,8 +1105,10 @@ export default function BookingWizard({ onComplete }) {
 
                           {/* Show selected plan name for step 1 */}
                           {stepIdx === 1 && selectedPlan && (
-                            <div className="text-xs text-blue-500 font-medium text-center leading-tight truncate">
-                              {selectedPlan.name}
+                            <div className="text-xs text-blue-500 font-medium text-center leading-tight">
+                              {selectedPlan.name.length > 15 
+                                ? selectedPlan.name.substring(0, 15) + '...'
+                                : selectedPlan.name}
                             </div>
                           )}
                         </div>
@@ -1011,7 +1117,7 @@ export default function BookingWizard({ onComplete }) {
                   </div>
 
                   {/* Continuous horizontal line */}
-                  <div className="absolute top-6 left-0 right-0 h-0.5 bg-gray-200 -z-0">
+                  <div className="absolute top-5 lg:top-6 left-0 right-0 h-0.5 bg-gray-200 -z-0">
                     <div
                       className="h-full bg-blue-600 transition-all duration-300"
                       style={{
@@ -1027,13 +1133,13 @@ export default function BookingWizard({ onComplete }) {
 
         {/* Error Display */}
         {error && (
-          <div className="px-4 py-6 sm:px-0">
-            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
-              <div className="flex items-center">
+          <div className="mb-4 sm:mb-6">
+            <div className="bg-red-50 border-2 border-red-200 rounded-lg sm:rounded-xl p-4 sm:p-6">
+              <div className="flex items-start sm:items-center">
                 <div className="flex-shrink-0">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6 text-red-500"
+                    className="h-5 w-5 sm:h-6 sm:w-6 text-red-500"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                   >
@@ -1044,9 +1150,9 @@ export default function BookingWizard({ onComplete }) {
                     />
                   </svg>
                 </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-red-800">Error</h3>
-                  <p className="text-red-700 mt-1">{error}</p>
+                <div className="ml-3 sm:ml-4 flex-1">
+                  <h3 className="text-base sm:text-lg font-semibold text-red-800">Error</h3>
+                  <p className="text-xs sm:text-sm text-red-700 mt-1">{error}</p>
                 </div>
               </div>
             </div>
@@ -1054,8 +1160,8 @@ export default function BookingWizard({ onComplete }) {
         )}
 
         {/* Step Content */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow-lg rounded-2xl p-6 sm:p-8 border border-gray-100">
+        <div className="mb-4 sm:mb-6">
+          <div className="bg-white shadow-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 border border-gray-100">
             {currentStep === 0 && renderServiceSelection()}
             {currentStep === 1 && renderPlanSelection()}
             {currentStep === 2 && (
@@ -1277,14 +1383,14 @@ export default function BookingWizard({ onComplete }) {
         </div>
 
         {/* Navigation Buttons */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow-lg rounded-2xl p-6 border border-gray-100">
-            <div className="flex flex-col sm:flex-row justify-between gap-4">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white shadow-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100">
+            <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4">
               <button
                 type="button"
                 onClick={handleBack}
                 disabled={currentStep === 0}
-                className={`px-8 py-3 border-2 rounded-lg text-sm font-semibold transition-colors ${
+                className={`w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 border-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
                   currentStep === 0
                     ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
                     : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300 cursor-pointer"
@@ -1308,7 +1414,7 @@ export default function BookingWizard({ onComplete }) {
                   (currentStep === 4 && !bookingData.startTimeISO) ||
                   loading
                 }
-                className={`px-8 py-3 rounded-lg text-sm font-semibold text-white transition-all ${
+                className={`w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-semibold text-white transition-all ${
                   (currentStep === 0 && !selectedService) ||
                   (currentStep === 1 && !selectedPlan) ||
                   (currentStep === 2 &&
@@ -1325,9 +1431,9 @@ export default function BookingWizard({ onComplete }) {
                 }`}
               >
                 {loading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                    Processing...
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    <span className="text-xs sm:text-sm">Processing...</span>
                   </div>
                 ) : currentStep === 0 ? (
                   "Select Plan"
@@ -1343,19 +1449,19 @@ export default function BookingWizard({ onComplete }) {
       </div>
     {/* Payment Modal */}
     {showPaymentModal && createdBooking && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-full max-w-2xl mx-4 bg-white rounded-2xl shadow-2xl p-6 relative">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-2xl bg-white rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 relative max-h-[90vh] overflow-y-auto">
           <button
             type="button"
             onClick={() => setShowPaymentModal(false)}
-            className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 text-gray-500 hover:text-gray-700 z-10"
             aria-label="Close"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 sm:w-6 sm:h-6">
               <path fillRule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 111.414 1.415L11.414 10l4.95 4.95a1 1 0 01-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 01-1.414-1.414L8.586 10l-4.95-4.95A1 1 0 115.05 3.636L10 8.586z" clipRule="evenodd" />
             </svg>
           </button>
-          <h3 className="text-xl font-semibold text-gray-900 mb-4">Complete Your Payment</h3>
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 pr-8">Complete Your Payment</h3>
           <PaymentForm
             bookingId={createdBooking.bookingId}
             amount={paymentAmountInCents || 0}
@@ -1418,24 +1524,24 @@ export default function BookingWizard({ onComplete }) {
 
     {/* Success Popup */}
     {showSuccessPopup && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl p-6 text-center">
-          <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-7 h-7 text-green-600"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.25 7.25a1 1 0 01-1.42 0l-3-3a1 1 0 011.42-1.42l2.29 2.29 6.54-6.54a1 1 0 011.42 0z" clipRule="evenodd"/></svg>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-md bg-white rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 text-center">
+          <div className="mx-auto mb-3 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-green-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6 sm:w-7 sm:h-7 text-green-600"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.25 7.25a1 1 0 01-1.42 0l-3-3a1 1 0 011.42-1.42l2.29 2.29 6.54-6.54a1 1 0 011.42 0z" clipRule="evenodd"/></svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-900">Payment successful</h3>
-          <p className="text-gray-600 mt-1">Redirecting to your sessions in {successCountdown}s</p>
-          <div className="mt-5 flex gap-3 justify-center">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Payment successful</h3>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">Redirecting to your sessions in {successCountdown}s</p>
+          <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
             <button
               type="button"
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 text-white text-xs sm:text-sm font-medium hover:bg-blue-700 cursor-pointer"
               onClick={() => router.push('/student/book-session')}
             >
               Book another session
             </button>
             <button
               type="button"
-              className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 rounded-lg border border-gray-200 text-gray-700 text-xs sm:text-sm font-medium hover:bg-gray-50 cursor-pointer"
               onClick={() => router.push('/student/my-sessions')}
             >
               View sessions

@@ -165,9 +165,16 @@ export default function TutorAvailability() {
   // Update slot
   const updateSlot = (slotId, field, value) => {
     setNewSlots((prev) =>
-      prev.map((slot) =>
-        slot.id === slotId ? { ...slot, [field]: value } : slot
-      )
+      prev.map((slot) => {
+        if (slot.id === slotId) {
+          // Convert dayOfWeek to number if it's dayOfWeek field
+          if (field === "dayOfWeek") {
+            return { ...slot, [field]: Number(value) };
+          }
+          return { ...slot, [field]: value };
+        }
+        return slot;
+      })
     );
   };
 
@@ -355,48 +362,76 @@ export default function TutorAvailability() {
 
       console.log("Saving availability data:", formattedData);
 
-      // Save all time slots using safe API calls
-      const savePromises = formattedData.map((slot) =>
-        safeApiCall(() => availabilityAPI.create(slot), {
+      // Send all slots as an array in a single API call
+      const result = await safeApiCall(
+        async () => {
+          const response = await availabilityAPI.create(formattedData);
+          console.log("Raw API response:", response);
+          return response;
+        },
+        {
           extractArray: true,
           dataKey: "data",
           defaultData: [],
-          errorMessage: "Failed to save availability slot. Please try again.",
-        })
+          errorMessage: "Failed to save availability slots. Please try again.",
+        }
       );
 
-      const results = await Promise.all(savePromises);
-      console.log("API responses:", results);
-
-      // Check if all saves were successful
-      const failedSaves = results.filter((result) => !result.success);
-      if (failedSaves.length > 0) {
-        console.error("Some saves failed:", failedSaves);
-        setErrorMessage(
-          "Some availability slots failed to save. Please try again."
-        );
+      if (!result.success) {
+        console.error("Save failed:", result.error);
+        console.error("Result:", result);
+        setErrorMessage(result.error || "Failed to save availability slots");
+        toast.error(result.error || "Failed to save availability slots");
+        setIsLoading(false);
         return;
       }
 
-      // Process the successful responses to get the new slots with their server-generated IDs
-      const newSlotsWithIds = results.map((result, index) => {
-        const slotData = formattedData[index];
-        const createdSlot = Array.isArray(result.data) ? result.data[0] : result.data;
+      console.log("Save successful. API response:", result.data);
+
+      // Check if we got valid data
+      if (!result.data) {
+        console.error("No data in response");
+        setErrorMessage("Received invalid response from server");
+        toast.error("Failed to save: Invalid response from server");
+        setIsLoading(false);
+        return;
+      }
+
+      // Process the successful response to get the new slots with their server-generated IDs
+      // The API returns an array of created slots
+      const createdSlots = Array.isArray(result.data) ? result.data : [result.data];
+      
+      console.log("Created slots:", createdSlots);
+      
+      if (createdSlots.length === 0) {
+        console.error("No slots were created");
+        setErrorMessage("No availability slots were created. Please try again.");
+        toast.error("No slots created. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      const newSlotsWithIds = createdSlots.map((createdSlot) => {
         return {
-          id: createdSlot?.id || `saved-${Date.now()}-${index}`,
-          dayOfWeek: slotData.dayOfWeek,
-          startTime: slotData.startTime,
-          endTime: slotData.endTime,
-          isAvailable: slotData.isAvailable,
-          recurrence: slotData.recurrence,
+          id: createdSlot?.id || `saved-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+          dayOfWeek: createdSlot.dayOfWeek,
+          startTime: createdSlot.startTime ? createdSlot.startTime.substring(0, 5) : "09:00",
+          endTime: createdSlot.endTime ? createdSlot.endTime.substring(0, 5) : "10:00",
+          isAvailable: typeof createdSlot.isAvailable === "boolean" ? createdSlot.isAvailable : true,
+          recurrence: createdSlot.recurrence || "weekly",
         };
       });
+
+      console.log("New slots with IDs:", newSlotsWithIds);
 
       // Add the new slots to the existing schedule data
       setScheduleData((prev) => [...prev, ...newSlotsWithIds]);
 
       // Clear the new slots
       setNewSlots([]);
+
+      // Clear any previous error messages
+      setErrorMessage("");
 
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
