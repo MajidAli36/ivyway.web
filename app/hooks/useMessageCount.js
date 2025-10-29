@@ -69,10 +69,23 @@ export const useMessageCount = () => {
   useEffect(() => {
     if (!socket || !connected || !user?.id) return;
 
-    socket.on("message:new", handleNewMessage);
+    const handleMessageNew = (message) => {
+      handleNewMessage(message);
+    };
+
+    const handleMessageCountUpdate = (data) => {
+      console.log("Message count update received:", data);
+      if (data && typeof data.count === 'number') {
+        setUnreadCount(data.count);
+      }
+    };
+
+    socket.on("message:new", handleMessageNew);
+    socket.on("message:count_update", handleMessageCountUpdate);
 
     return () => {
-      socket.off("message:new", handleNewMessage);
+      socket.off("message:new", handleMessageNew);
+      socket.off("message:count_update", handleMessageCountUpdate);
     };
   }, [socket, connected, user?.id, handleNewMessage]);
 
@@ -85,16 +98,7 @@ export const useMessageCount = () => {
     }
   }, [isAuthenticated, fetchUnreadCount]);
 
-  // Refresh count periodically (every 30 seconds)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const interval = setInterval(() => {
-      fetchUnreadCount();
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated, fetchUnreadCount]);
+  // No polling - rely on socket events for real-time updates
 
   return {
     unreadCount,

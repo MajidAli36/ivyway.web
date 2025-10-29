@@ -22,7 +22,22 @@ export default function ChatHeader({
       )}
 
       <div className="relative flex-shrink-0">
-        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center text-white font-bold">
+        {user?.profileImageUrl ? (
+          <img
+            src={user.profileImageUrl}
+            alt={user?.name || "User"}
+            className="h-10 w-10 rounded-full object-cover"
+            onError={(e) => {
+              // Fallback to initials if image fails to load
+              e.target.style.display = "none";
+              e.target.nextElementSibling.style.display = "flex";
+            }}
+          />
+        ) : null}
+        <div 
+          className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center text-white font-bold"
+          style={{ display: user?.profileImageUrl ? "none" : "flex" }}
+        >
           {user?.name?.charAt(0) || "?"}
         </div>
         {isOnline && (

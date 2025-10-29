@@ -233,16 +233,33 @@ export function NotificationProvider({ children }) {
       fetchNotifications();
     };
 
+    // Listen for notification count updates (real-time from backend)
+    const handleNotificationCountUpdate = (data) => {
+      console.log("Notification count update received:", data);
+      if (data && typeof data.count === 'number') {
+        dispatch({ type: actionTypes.SET_UNREAD_COUNT, payload: data.count });
+      }
+    };
+
+    // Listen for all notifications marked as read
+    const handleAllRead = () => {
+      dispatch({ type: actionTypes.MARK_ALL_AS_READ });
+    };
+
     // Socket event listeners
     socket.on("notification:new", handleNewNotification);
     socket.on("notification:updated", handleNotificationUpdate);
     socket.on("notification:deleted", handleNotificationDelete);
+    socket.on("notification:count_update", handleNotificationCountUpdate);
+    socket.on("notification:all_read", handleAllRead);
 
     // Cleanup
     return () => {
       socket.off("notification:new", handleNewNotification);
       socket.off("notification:updated", handleNotificationUpdate);
       socket.off("notification:deleted", handleNotificationDelete);
+      socket.off("notification:count_update", handleNotificationCountUpdate);
+      socket.off("notification:all_read", handleAllRead);
     };
   }, [socket, connected, fetchNotifications]);
 
@@ -253,32 +270,25 @@ export function NotificationProvider({ children }) {
     }
   }, [fetchUnreadCount, isAuthenticated, user]);
 
-  // Refresh count when tab becomes visible (only when authenticated)
+  // Refresh count when tab becomes visible (only when authenticated) - optional fallback
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchUnreadCount();
+      if (!document.hidden && socket && connected) {
+        // Only fetch if socket is not connected, otherwise rely on socket events
+        // This serves as a fallback for when socket might have disconnected
+        if (!connected) {
+          fetchUnreadCount();
+        }
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchUnreadCount, isAuthenticated, user]);
+  }, [fetchUnreadCount, isAuthenticated, user, socket, connected]);
 
-  // Refresh count every 30 seconds when tab is active (only when authenticated)
-  useEffect(() => {
-    if (!isAuthenticated || !user) return;
-    
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        fetchUnreadCount();
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [fetchUnreadCount, isAuthenticated, user]);
+  // No polling - rely on socket events for real-time updates
 
   const value = {
     ...state,

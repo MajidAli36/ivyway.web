@@ -163,6 +163,7 @@ export default function TutorMessagesPage() {
               message.senderId === authService.getUser()?.id
                 ? "tutor"
                 : "student",
+            senderId: message.senderId,
             // Show "This message has been deleted" for deleted messages
             text: message.isDeleted
               ? "This message has been deleted"
@@ -170,6 +171,7 @@ export default function TutorMessagesPage() {
             timestamp: formatTimestamp(message.createdAt),
             createdAt: message.createdAt,
             isDeletedLocally: message.isDeleted, // Keep track of deletion status
+            profileImageUrl: message.sender?.profileImageUrl || null, // Add profile image from sender
             attachment:
               !message.isDeleted && message.contentType !== "text"
                 ? {
@@ -297,6 +299,7 @@ export default function TutorMessagesPage() {
                 timestamp: conversation.lastMessageAt
                   ? formatTimestamp(conversation.lastMessageAt)
                   : "",
+                profileImageUrl: other?.profileImageUrl || null, // Add profile image URL
                 unread: conversation.unreadCount || 0,
                 online: !!other?.isOnline,
                 userId: other?.id || "",
@@ -342,10 +345,13 @@ export default function TutorMessagesPage() {
     isAuthenticated,
   ]);
 
-  // Load initial data
+  // Load initial data - only once on mount
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    if (isAuthenticated()) {
+      fetchConversations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Setup socket listeners
   useEffect(() => {
@@ -363,9 +369,11 @@ export default function TutorMessagesPage() {
         id: message.id,
         sender:
           message.senderId === authService.getUser()?.id ? "tutor" : "student",
+        senderId: message.senderId,
         text: message.content,
         timestamp: "Just now",
         createdAt: message.createdAt || new Date().toISOString(),
+        profileImageUrl: message.sender?.profileImageUrl || null, // Add profile image from sender
         attachment:
           message.contentType !== "text"
             ? {
@@ -437,16 +445,117 @@ export default function TutorMessagesPage() {
       }
     };
 
+    // Handle message deletion
+    const handleMessageDeleted = (data) => {
+      if (!data?.messageId || !data?.conversationId) return;
+      if (selectedConversation && data.conversationId === selectedConversation.id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === data.messageId
+              ? { ...m, isDeletedLocally: true, text: "This message has been deleted" }
+              : m
+          )
+        );
+      }
+      // Update conversation list
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === data.conversationId
+            ? { ...c, lastMessage: "This message has been deleted" }
+            : c
+        )
+      );
+    };
+
+    // Handle message count update
+    const handleMessageCountUpdate = (data) => {
+      console.log("Message count update received:", data);
+      // This is handled globally by useMessageCount hook
+      // But we can update local conversation unread counts if needed
+    };
+
+    // Handle new conversation
+    const handleNewConversation = (data) => {
+      console.log("New conversation received:", data);
+      if (data && data.id) {
+        // Check if conversation already exists
+        setConversations((prev) => {
+          const exists = prev.some((c) => c.id === data.id);
+          if (!exists) {
+            // Fetch conversations to get full details
+            fetchConversations();
+          }
+          return prev;
+        });
+      }
+    };
+
+    // Handle conversation update
+    const handleConversationUpdated = (data) => {
+      console.log("Conversation updated:", data);
+      if (data && data.conversationId) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === data.conversationId
+              ? { ...c, ...data, lastUpdated: new Date().toISOString() }
+              : c
+          )
+        );
+      }
+    };
+
+    // Handle conversation deletion
+    const handleConversationDeleted = (data) => {
+      console.log("Conversation deleted:", data);
+      if (data && data.conversationId) {
+        // Remove from conversations list
+        setConversations((prev) =>
+          prev.filter((c) => c.id !== data.conversationId)
+        );
+        // If it was selected, clear selection
+        if (selectedConversation?.id === data.conversationId) {
+          setSelectedConversation(null);
+          setMessages([]);
+        }
+      }
+    };
+
+    // Handle message reactions
+    const handleMessageReaction = (data) => {
+      console.log("Message reaction received:", data);
+      if (selectedConversation && data.conversationId === selectedConversation.id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === data.messageId
+              ? { ...m, reactions: data.reactions || m.reactions }
+              : m
+          )
+        );
+      }
+    };
+
     // Register event listeners
     socket.on("message:new", handleNewMessage);
+    socket.on("message:deleted", handleMessageDeleted);
+    socket.on("message:count_update", handleMessageCountUpdate);
+    socket.on("message:reaction", handleMessageReaction);
     socket.on("typing:indicator", handleTypingIndicator);
+    socket.on("conversation:new", handleNewConversation);
+    socket.on("conversation:updated", handleConversationUpdated);
+    socket.on("conversation:deleted", handleConversationDeleted);
 
     // Cleanup function
     return () => {
       socket.off("message:new", handleNewMessage);
+      socket.off("message:deleted", handleMessageDeleted);
+      socket.off("message:count_update", handleMessageCountUpdate);
+      socket.off("message:reaction", handleMessageReaction);
       socket.off("typing:indicator", handleTypingIndicator);
+      socket.off("conversation:new", handleNewConversation);
+      socket.off("conversation:updated", handleConversationUpdated);
+      socket.off("conversation:deleted", handleConversationDeleted);
     };
-  }, [socket, connected, selectedConversation]);
+  }, [socket, connected, selectedConversation, fetchConversations]);
 
   // Handle selecting a conversation
   const handleSelectConversation = useCallback(

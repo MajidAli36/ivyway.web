@@ -15,8 +15,9 @@ import {
   LockClosedIcon,
   QrCodeIcon,
 } from "@heroicons/react/24/outline";
+import { Formik, Form, Field, ErrorMessage } from "formik";
+import * as Yup from "yup";
 import studentProfileService from "../../../lib/api/studentProfileService";
-import { analyzeProfileFields } from "@/app/utils/profileFieldAnalysis";
 import { useTwoFAModal } from "@/app/providers/TwoFAModalProvider";
 import { apiClient } from "@/app/lib/api/client";
 import TwoFAModal from "@/app/components/profile/TwoFAModal";
@@ -157,49 +158,8 @@ const StudentProfile = () => {
     }
   };
 
-  // Calculate profile completion using comprehensive field analysis
-  const getProfileCompletionData = () => {
-    return analyzeProfileFields(formData, "student");
-  };
-
-  const profileCompletionData = getProfileCompletionData();
-
-  // Get missing fields for completion indicator (using weighted system fields)
-  const getMissingFields = () => {
-    const missing = [];
-    const fieldLabels = {
-      phoneNumber: "Phone Number",
-      dateOfBirth: "Date of Birth",
-      bio: "Bio",
-      profileImageUrl: "Profile Image", // Use profileImageUrl instead of profileImage
-      program: "Program",
-      major: "Major",
-      gpa: "GPA",
-      expectedGraduation: "Expected Graduation",
-      academicStanding: "Academic Standing",
-      enrollmentDate: "Enrollment Date",
-      subjects: "Subjects",
-      availability: "Availability",
-      preferredFormat: "Preferred Format",
-      introVideoUrl: "Intro Video",
-    };
-
-    Object.keys(fieldLabels).forEach((field) => {
-      const value = formData[field];
-      if (Array.isArray(value)) {
-        if (value.length === 0) missing.push(fieldLabels[field]);
-      } else if (field === "profileImageUrl" || field === "introVideoUrl") {
-        // Safe string check for URL fields
-        if (!value || typeof value !== "string" || value.trim() === "") {
-          missing.push(fieldLabels[field]);
-        }
-      } else if (!value || value.toString().trim() === "") {
-        missing.push(fieldLabels[field]);
-      }
-    });
-
-    return missing;
-  };
+  // Profile completion is calculated by the backend
+  // We use formData.profileCompletion which comes from the backend response
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -433,26 +393,76 @@ const StudentProfile = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Formik validation schema with Yup
+  const validationSchema = Yup.object().shape({
+    phoneNumber: Yup.string()
+      .required("Phone number is required")
+      .test("phone-format", "Please enter a valid phone number", (value) => {
+        if (!value) return false;
+        const cleaned = value.replace(/[\s\-\(\)]/g, "");
+        return /^[\+]?[1-9][\d]{0,15}$/.test(cleaned);
+      }),
+    dateOfBirth: Yup.date()
+      .required("Date of birth is required")
+      .nullable()
+      .max(new Date(new Date().setFullYear(new Date().getFullYear() - 13)), "You must be at least 13 years old")
+      .min(new Date(new Date().setFullYear(new Date().getFullYear() - 100)), "Please enter a valid date of birth"),
+    bio: Yup.string()
+      .required("Bio is required")
+      .min(10, "Bio must be at least 10 characters")
+      .max(1000, "Bio must be less than 1000 characters"),
+    program: Yup.string()
+      .required("Program is required")
+      .oneOf(["undergraduate", "graduate", "phd", "other"], "Please select a valid program"),
+    major: Yup.string()
+      .required("Major/Field of Study is required")
+      .min(2, "Major must be at least 2 characters")
+      .max(100, "Major must be less than 100 characters"),
+    enrollmentDate: Yup.date()
+      .required("Enrollment date is required")
+      .nullable()
+      .max(new Date(), "Enrollment date cannot be in the future"),
+    gpa: Yup.number()
+      .nullable()
+      .min(0, "GPA must be between 0.0 and 4.0")
+      .max(4.0, "GPA must be between 0.0 and 4.0"),
+    expectedGraduation: Yup.number()
+      .nullable()
+      .integer("Graduation year must be a whole number")
+      .min(new Date().getFullYear(), `Graduation year must be ${new Date().getFullYear()} or later`)
+      .max(new Date().getFullYear() + 10, `Graduation year must be before ${new Date().getFullYear() + 11}`),
+    academicStanding: Yup.string()
+      .max(50, "Academic standing must be less than 50 characters"),
+    preferredFormat: Yup.string()
+      .oneOf(["online", "in-person", "hybrid"], "Please select a valid format"),
+    additionalNotes: Yup.string()
+      .max(500, "Additional notes must be less than 500 characters"),
+    subjects: Yup.array()
+      .of(Yup.string())
+      .min(1, "Please select at least one subject"),
+    availability: Yup.array()
+      .of(Yup.string()),
+  });
+
+  const handleSubmit = async (values, { setSubmitting, setFieldError }) => {
     setIsSaving(true);
     setError("");
 
     try {
       const profileData = {
-        phoneNumber: formData.phoneNumber,
-        dateOfBirth: formData.dateOfBirth,
-        bio: formData.bio,
-        program: formData.program,
-        major: formData.major,
-        gpa: formData.gpa,
-        expectedGraduation: formData.expectedGraduation,
-        academicStanding: formData.academicStanding,
-        enrollmentDate: formData.enrollmentDate,
-        preferredFormat: formData.preferredFormat,
-        additionalNotes: formData.additionalNotes,
-        subjects: formData.subjects,
-        availability: formData.availability,
+        phoneNumber: values.phoneNumber,
+        dateOfBirth: values.dateOfBirth,
+        bio: values.bio,
+        program: values.program,
+        major: values.major,
+        gpa: values.gpa || null,
+        expectedGraduation: values.expectedGraduation || null,
+        academicStanding: values.academicStanding || null,
+        enrollmentDate: values.enrollmentDate,
+        preferredFormat: values.preferredFormat || null,
+        additionalNotes: values.additionalNotes || null,
+        subjects: values.subjects || [],
+        availability: values.availability || [],
         profileImage: formData.profileImage,
       };
 
@@ -473,8 +483,15 @@ const StudentProfile = () => {
       }
     } catch (err) {
       setError(err.message || "Failed to update profile");
+      // Set field-level errors if available
+      if (err.response?.data?.errors) {
+        err.response.data.errors.forEach((error) => {
+          setFieldError(error.field, error.message);
+        });
+      }
     } finally {
       setIsSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -493,8 +510,8 @@ const StudentProfile = () => {
     }
   };
 
-  const profileCompletion = profileCompletionData.percentage;
-  const missingFields = profileCompletionData.missingFields.map(field => field.label);
+  // Use profile completion from backend (stored in formData.profileCompletion)
+  const profileCompletion = formData.profileCompletion || 0;
 
   if (isLoading) {
     return (
@@ -584,25 +601,46 @@ const StudentProfile = () => {
             ></div>
           </div>
 
-          {missingFields.length > 0 && (
+          {profileCompletion < 100 && (
             <div>
-              <p className="text-sm text-gray-600 mb-2">Missing information:</p>
-              <div className="flex flex-wrap gap-2">
-                {missingFields.map((field, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                  >
-                    {field}
-                  </span>
-                ))}
-              </div>
+              <p className="text-sm text-gray-600">
+                Complete your profile to {100 - profileCompletion}% more to reach 100%
+              </p>
+            </div>
+          )}
+          
+          {profileCompletion === 100 && (
+            <div className="mt-2">
+              <p className="text-sm text-green-600 font-medium">
+                🎉 Congratulations! Your profile is complete!
+              </p>
             </div>
           )}
         </div>
 
         {/* Main Form */}
-        <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg">
+        <Formik
+          initialValues={{
+            phoneNumber: formData.phoneNumber || "",
+            dateOfBirth: formData.dateOfBirth || "",
+            bio: formData.bio || "",
+            program: formData.program || "",
+            major: formData.major || "",
+            gpa: formData.gpa || "",
+            expectedGraduation: formData.expectedGraduation || "",
+            academicStanding: formData.academicStanding || "",
+            enrollmentDate: formData.enrollmentDate || "",
+            preferredFormat: formData.preferredFormat || "",
+            additionalNotes: formData.additionalNotes || "",
+            subjects: formData.subjects || [],
+            availability: formData.availability || [],
+          }}
+          validationSchema={validationSchema}
+          onSubmit={handleSubmit}
+          enableReinitialize={true}
+        >
+          {({ values, errors, touched, setFieldValue, isSubmitting, handleChange, handleBlur }) => (
+            <Form className="bg-white shadow rounded-lg">
           <div className="p-8">
             {/* Profile Photo Section */}
             <div className="mb-8">
@@ -777,47 +815,56 @@ const StudentProfile = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
+                    Phone Number <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Field
+                    name="phoneNumber"
                     type="tel"
-                    value={formData.phoneNumber}
-                    onChange={(e) =>
-                      handleInputChange("phoneNumber", e.target.value)
-                    }
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    placeholder="Enter your phone number (e.g., +1234567890)"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.phoneNumber && touched.phoneNumber ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="phoneNumber" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of Birth
+                    Date of Birth <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Field
+                    name="dateOfBirth"
                     type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) =>
-                      handleInputChange("dateOfBirth", e.target.value)
-                    }
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.dateOfBirth && touched.dateOfBirth ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="dateOfBirth" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
               </div>
 
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Bio
+                  Bio <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  value={formData.bio}
-                  onChange={(e) => handleInputChange("bio", e.target.value)}
-                  disabled={!isEditing}
+                <Field
+                  name="bio"
+                  as="textarea"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  placeholder="Tell us about yourself..."
+                  disabled={!isEditing}
+                  placeholder="Tell us about yourself, your academic goals, and what you're looking for in a tutor. Minimum 10 characters required."
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                    errors.bio && touched.bio ? "border-red-300" : "border-gray-300"
+                  }`}
                 />
+                <div className="mt-1 flex justify-between">
+                  <ErrorMessage name="bio" component="p" className="text-sm text-red-600" />
+                  <p className="text-sm text-gray-500">
+                    {values.bio?.length || 0}/1000 characters
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -833,106 +880,113 @@ const StudentProfile = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Program
+                    Program <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={formData.program}
-                    onChange={(e) =>
-                      handleInputChange("program", e.target.value)
-                    }
+                  <Field
+                    name="program"
+                    as="select"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.program && touched.program ? "border-red-300" : "border-gray-300"
+                    }`}
                   >
                     <option value="">Select Program</option>
                     <option value="undergraduate">Undergraduate</option>
                     <option value="graduate">Graduate</option>
                     <option value="phd">PhD</option>
                     <option value="other">Other</option>
-                  </select>
+                  </Field>
+                  <ErrorMessage name="program" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Major/Field of Study
+                    Major/Field of Study <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Field
+                    name="major"
                     type="text"
-                    value={formData.major}
-                    onChange={(e) => handleInputChange("major", e.target.value)}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    placeholder="e.g., Computer Science, Biology, Business Administration"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.major && touched.major ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="major" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     GPA
                   </label>
-                  <input
+                  <Field
+                    name="gpa"
                     type="number"
                     step="0.01"
                     min="0"
                     max="4"
-                    value={formData.gpa}
-                    onChange={(e) => handleInputChange("gpa", e.target.value)}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    placeholder="e.g., 3.75"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.gpa && touched.gpa ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="gpa" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Academic Standing
                   </label>
-                  <select
-                    value={formData.academicStanding}
-                    onChange={(e) =>
-                      handleInputChange("academicStanding", e.target.value)
-                    }
+                  <Field
+                    name="academicStanding"
+                    as="select"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    placeholder="Select your academic standing"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.academicStanding && touched.academicStanding ? "border-red-300" : "border-gray-300"
+                    }`}
                   >
                     <option value="">Select Standing</option>
                     <option value="Good Standing">Good Standing</option>
-                    <option value="Academic Probation">
-                      Academic Probation
-                    </option>
+                    <option value="Academic Probation">Academic Probation</option>
                     <option value="Academic Warning">Academic Warning</option>
                     <option value="Dean's List">Dean's List</option>
-                  </select>
+                  </Field>
+                  <ErrorMessage name="academicStanding" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Enrollment Date
+                    Enrollment Date <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Field
+                    name="enrollmentDate"
                     type="date"
-                    value={formData.enrollmentDate}
-                    onChange={(e) =>
-                      handleInputChange("enrollmentDate", e.target.value)
-                    }
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.enrollmentDate && touched.enrollmentDate ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="enrollmentDate" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Expected Graduation Year
                   </label>
-                  <input
+                  <Field
+                    name="expectedGraduation"
                     type="number"
                     min={new Date().getFullYear()}
                     max={new Date().getFullYear() + 10}
-                    value={formData.expectedGraduation}
-                    onChange={(e) =>
-                      handleInputChange("expectedGraduation", e.target.value)
-                    }
                     disabled={!isEditing}
                     placeholder="e.g., 2027"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.expectedGraduation && touched.expectedGraduation ? "border-red-300" : "border-gray-300"
+                    }`}
                   />
+                  <ErrorMessage name="expectedGraduation" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
               </div>
             </div>
@@ -951,25 +1005,26 @@ const StudentProfile = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Preferred Format
                   </label>
-                  <select
-                    value={formData.preferredFormat}
-                    onChange={(e) =>
-                      handleInputChange("preferredFormat", e.target.value)
-                    }
+                  <Field
+                    name="preferredFormat"
+                    as="select"
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                      errors.preferredFormat && touched.preferredFormat ? "border-red-300" : "border-gray-300"
+                    }`}
                   >
                     <option value="">Select Format</option>
                     <option value="online">Online</option>
                     <option value="in-person">In-Person</option>
                     <option value="hybrid">Hybrid</option>
-                  </select>
+                  </Field>
+                  <ErrorMessage name="preferredFormat" component="p" className="mt-1 text-sm text-red-600" />
                 </div>
               </div>
 
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Subjects You Need Help With
+                  Subjects You Need Help With <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
@@ -985,8 +1040,15 @@ const StudentProfile = () => {
                     <label key={subject} className="flex items-center">
                       <input
                         type="checkbox"
-                        checked={formData.subjects.includes(subject)}
-                        onChange={() => handleArrayChange("subjects", subject)}
+                        checked={values.subjects?.includes(subject) || false}
+                        onChange={(e) => {
+                          const currentSubjects = values.subjects || [];
+                          if (e.target.checked) {
+                            setFieldValue("subjects", [...currentSubjects, subject]);
+                          } else {
+                            setFieldValue("subjects", currentSubjects.filter(s => s !== subject));
+                          }
+                        }}
                         disabled={!isEditing}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                       />
@@ -996,6 +1058,7 @@ const StudentProfile = () => {
                     </label>
                   ))}
                 </div>
+                <ErrorMessage name="subjects" component="p" className="mt-1 text-sm text-red-600" />
               </div>
 
               <div className="mt-6">
@@ -1015,8 +1078,15 @@ const StudentProfile = () => {
                     <label key={day} className="flex items-center">
                       <input
                         type="checkbox"
-                        checked={formData.availability.includes(day)}
-                        onChange={() => handleArrayChange("availability", day)}
+                        checked={values.availability?.includes(day) || false}
+                        onChange={(e) => {
+                          const currentAvailability = values.availability || [];
+                          if (e.target.checked) {
+                            setFieldValue("availability", [...currentAvailability, day]);
+                          } else {
+                            setFieldValue("availability", currentAvailability.filter(a => a !== day));
+                          }
+                        }}
                         disabled={!isEditing}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                       />
@@ -1030,16 +1100,22 @@ const StudentProfile = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Additional Notes
                 </label>
-                <textarea
-                  value={formData.additionalNotes}
-                  onChange={(e) =>
-                    handleInputChange("additionalNotes", e.target.value)
-                  }
-                  disabled={!isEditing}
+                <Field
+                  name="additionalNotes"
+                  as="textarea"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  placeholder="Any additional information about your tutoring preferences..."
+                  disabled={!isEditing}
+                  placeholder="Any additional information about your tutoring preferences, learning style, or special requirements..."
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
+                    errors.additionalNotes && touched.additionalNotes ? "border-red-300" : "border-gray-300"
+                  }`}
                 />
+                <div className="mt-1 flex justify-between">
+                  <ErrorMessage name="additionalNotes" component="p" className="text-sm text-red-600" />
+                  <p className="text-sm text-gray-500">
+                    {values.additionalNotes?.length || 0}/500 characters
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1162,15 +1238,17 @@ const StudentProfile = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSubmitting || isSaving || Object.keys(errors).length > 0}
                   className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSaving ? "Saving..." : "Save Changes"}
+                  {isSubmitting || isSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </div>
           )}
-        </form>
+        </Form>
+          )}
+        </Formik>
 
         <TwoFAModal />
         <SuccessModal 

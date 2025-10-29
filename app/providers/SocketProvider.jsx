@@ -75,7 +75,33 @@ export function SocketProvider({ children }) {
           }
         });
 
-        // Notification event handlers
+        // Message and conversation event handlers (for global handling)
+        socketInstance.on("message:new", (data) => {
+          console.log("New message received globally:", data);
+          // Individual pages will handle their own message:new events
+        });
+
+        socketInstance.on("message:count_update", (data) => {
+          console.log("Message count update received globally:", data);
+          // useMessageCount hook will handle this
+        });
+
+        socketInstance.on("conversation:new", (data) => {
+          console.log("New conversation received globally:", data);
+          // Individual pages will handle their own conversation:new events
+        });
+
+        socketInstance.on("conversation:updated", (data) => {
+          console.log("Conversation updated globally:", data);
+          // Individual pages will handle their own conversation:updated events
+        });
+
+        socketInstance.on("conversation:deleted", (data) => {
+          console.log("Conversation deleted globally:", data);
+          // Individual pages will handle their own conversation:deleted events
+        });
+
+        // Notification event handlers (handled by NotificationProvider)
         socketInstance.on("notification:new", (data) => {
           console.log("New notification received:", data);
           // This will be handled by the NotificationProvider
@@ -83,6 +109,16 @@ export function SocketProvider({ children }) {
 
         socketInstance.on("notification:updated", (data) => {
           console.log("Notification updated:", data);
+          // This will be handled by the NotificationProvider
+        });
+
+        socketInstance.on("notification:count_update", (data) => {
+          console.log("Notification count update received:", data);
+          // This will be handled by the NotificationProvider
+        });
+
+        socketInstance.on("notification:all_read", (data) => {
+          console.log("All notifications marked as read:", data);
           // This will be handled by the NotificationProvider
         });
 

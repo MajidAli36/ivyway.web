@@ -139,10 +139,21 @@ export default function MessageList({
               >
                 <div className="flex items-center px-4 py-4">
                   <div className="relative flex-shrink-0">
+                    {conversation.profileImageUrl ? (
+                      <img
+                        src={conversation.profileImageUrl}
+                        alt={conversation.name}
+                        className="h-12 w-12 rounded-full object-cover"
+                        onError={(e) => {
+                          // Fallback to initials if image fails to load
+                          e.target.style.display = "none";
+                          e.target.nextElementSibling.style.display = "flex";
+                        }}
+                      />
+                    ) : null}
                     <div
-                      className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-bold ${
-                        conversation.unread > 0 ? "bg-blue-500" : "bg-gray-500"
-                      }`}
+                      className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold bg-gray-500"
+                      style={{ display: conversation.profileImageUrl ? "none" : "flex" }}
                     >
                       {getInitials(conversation.name)}
                     </div>
@@ -157,50 +168,17 @@ export default function MessageList({
                       <span className="font-medium text-gray-900 truncate">
                         {conversation.name}
                       </span>
-                      <span
-                        className={`text-xs ${
-                          conversation.unread > 0
-                            ? "text-blue-500 font-medium"
-                            : "text-gray-500"
-                        }`}
-                      >
+                      <span className="text-xs text-gray-500">
                         {conversation.timestamp}
                       </span>
                     </div>
                     <div className="flex justify-between items-center mt-1">
                       <p className="text-sm text-gray-600 truncate max-w-[70%]">
                         {/* Show who sent the last message if available and message is not empty */}
-                        {conversation.lastMessage &&
-                          conversation.lastMessage !== "No messages yet" && (
-                            <>
-                              {conversation.lastMessageFromYou && (
-                                <span className="font-medium text-gray-700">
-                                  You:{" "}
-                                </span>
-                              )}
-                              {conversation.lastMessageFromOther && (
-                                <span className="font-medium text-gray-700">
-                                  {userRole === "student"
-                                    ? "Tutor: "
-                                    : userRole === "counselor"
-                                    ? "Student: "
-                                    : userRole === "teacher"
-                                    ? "Other: "
-                                    : "Other: "}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        {conversation.lastMessage ||
-                          conversation.lastMessageContent ||
-                          conversation.lastMessageText ||
-                          "No messages yet"}
+                        {conversation.lastMessage && conversation.lastMessage !== "No messages yet" ? conversation.lastMessage : conversation.lastMessageContent || conversation.lastMessageText || "No messages yet"}
+                         
+                       
                       </p>
-                      {conversation.unread > 0 && (
-                        <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-white text-xs font-medium shadow-sm ring-2 ring-white">
-                          {conversation.unread}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>

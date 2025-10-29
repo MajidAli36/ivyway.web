@@ -89,12 +89,14 @@ export default function CounselorMessagesPage() {
               message.senderId === authService.getUser()?.id
                 ? "counselor"
                 : "student",
+            senderId: message.senderId,
             text: message.isDeleted
               ? "This message has been deleted"
               : message.content,
             timestamp: formatTimestamp(message.createdAt),
             createdAt: message.createdAt,
             isDeletedLocally: message.isDeleted,
+            profileImageUrl: message.sender?.profileImageUrl || null, // Add profile image from sender
             attachment:
               !message.isDeleted && message.contentType !== "text"
                 ? {
@@ -188,6 +190,7 @@ export default function CounselorMessagesPage() {
                 unread: conversation.unreadCount || 0,
                 online: !!other.isOnline,
                 userId: other.id || conversation.userId || "",
+                profileImageUrl: other?.profileImageUrl || null, // Add profile image URL
                 bookingId: conversation.bookingId,
                 upcoming: !!conversation.upcomingSession,
                 upcomingSession: conversation.upcomingSession,
@@ -258,10 +261,11 @@ export default function CounselorMessagesPage() {
     return () => window.removeEventListener("resize", checkIfMobile);
   }, []);
 
-  // Load initial data
+  // Load initial data - only once on mount
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Setup socket listeners
   useEffect(() => {
@@ -292,8 +296,10 @@ export default function CounselorMessagesPage() {
               message.senderId === authService.getUser()?.id
                 ? "counselor"
                 : "student",
+            senderId: message.senderId,
             text: message.content,
             timestamp: "Just now",
+            profileImageUrl: message.sender?.profileImageUrl || null, // Add profile image from sender
             createdAt: message.createdAt || new Date().toISOString(),
             attachment:
               message.contentType !== "text"
@@ -363,14 +369,103 @@ export default function CounselorMessagesPage() {
       }
     };
 
-    // Register event listeners (align with tutor)
+    // Handle new conversation
+    const handleNewConversation = (data) => {
+      console.log("New conversation received:", data);
+      if (data && data.id) {
+        setConversations((prev) => {
+          const exists = prev.some((conv) => conv.id === data.id);
+          if (exists) return prev;
+          return [data, ...prev];
+        });
+      }
+    };
+
+    // Handle conversation update
+    const handleConversationUpdated = (data) => {
+      console.log("Conversation updated:", data);
+      if (data && data.conversationId) {
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === data.conversationId
+              ? { ...conv, ...data }
+              : conv
+          )
+        );
+      }
+    };
+
+    // Handle conversation deletion
+    const handleConversationDeleted = (data) => {
+      if (data.conversationId) {
+        setConversations((prev) =>
+          prev.filter((conv) => conv.id !== data.conversationId)
+        );
+        if (selectedConversation?.id === data.conversationId) {
+          setSelectedConversation(null);
+          setMessages([]);
+        }
+      }
+    };
+
+    // Handle message deletion
+    const handleMessageDeleted = (data) => {
+      if (!data?.messageId || !data?.conversationId) return;
+      if (selectedConversation && data.conversationId === selectedConversation.id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === data.messageId
+              ? { ...m, isDeletedLocally: true, text: "This message has been deleted" }
+              : m
+          )
+        );
+      }
+    };
+
+    // Handle message count update
+    const handleMessageCountUpdate = (data) => {
+      console.log("Message count update received:", data);
+      // This is handled globally by useMessageCount hook
+      // But we can update local conversation unread counts if needed
+      if (data && typeof data.count === 'number') {
+        // The useMessageCount hook will handle the global count update
+      }
+    };
+
+    // Handle message reactions
+    const handleMessageReaction = (data) => {
+      console.log("Message reaction received:", data);
+      if (selectedConversation && data.conversationId === selectedConversation.id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === data.messageId
+              ? { ...m, reactions: data.reactions || m.reactions }
+              : m
+          )
+        );
+      }
+    };
+
+    // Register event listeners
     socket.on("message:new", handleNewMessage);
+    socket.on("message:deleted", handleMessageDeleted);
+    socket.on("message:count_update", handleMessageCountUpdate);
+    socket.on("message:reaction", handleMessageReaction);
     socket.on("typing:indicator", handleTypingIndicator);
+    socket.on("conversation:new", handleNewConversation);
+    socket.on("conversation:updated", handleConversationUpdated);
+    socket.on("conversation:deleted", handleConversationDeleted);
 
     // Cleanup function
     return () => {
       socket.off("message:new", handleNewMessage);
+      socket.off("message:deleted", handleMessageDeleted);
+      socket.off("message:count_update", handleMessageCountUpdate);
+      socket.off("message:reaction", handleMessageReaction);
       socket.off("typing:indicator", handleTypingIndicator);
+      socket.off("conversation:new", handleNewConversation);
+      socket.off("conversation:updated", handleConversationUpdated);
+      socket.off("conversation:deleted", handleConversationDeleted);
     };
   }, [socket, connected, selectedConversation]);
 
