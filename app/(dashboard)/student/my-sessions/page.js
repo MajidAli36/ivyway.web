@@ -77,6 +77,9 @@ function StudentSessions() {
 
       try {
         let allSessions = [];
+        let hasCounselorError = false;
+        let hasTutorError = false;
+        let apiErrors = [];
 
         // Try to fetch counselor sessions using the proper endpoint
         try {
@@ -127,9 +130,14 @@ function StudentSessions() {
                 s.sessionType === "virtual" ? s.meetingLink || "#" : null,
             }));
             allSessions = [...allSessions, ...counselorSessions];
+          } else if (!counselorResult.success) {
+            hasCounselorError = true;
+            apiErrors.push("Failed to load counseling sessions");
           }
         } catch (counselorError) {
-          console.warn("Failed to fetch counselor sessions:", counselorError);
+          console.error("Failed to fetch counselor sessions:", counselorError);
+          hasCounselorError = true;
+          apiErrors.push("Failed to load counseling sessions");
         }
 
         // Try to fetch tutor sessions using the existing endpoint (exclude counselor bookings)
@@ -180,93 +188,28 @@ function StudentSessions() {
                 s.sessionType === "virtual" ? s.meetingLink || "#" : null,
             }));
             allSessions = [...allSessions, ...tutorSessions];
+          } else {
+            hasTutorError = true;
+            apiErrors.push("Failed to load tutoring sessions");
           }
         } catch (tutorError) {
-          console.warn("Failed to fetch tutor sessions:", tutorError);
+          console.error("Failed to fetch tutor sessions:", tutorError);
+          hasTutorError = true;
+          apiErrors.push("Failed to load tutoring sessions");
         }
 
-        // If no sessions found from API, create some mock data for demonstration
-        if (allSessions.length === 0) {
-          // Use static dates to avoid hydration mismatches
-          const today = new Date("2024-01-20");
-          const tomorrow = new Date("2024-01-21");
-          const dayAfter = new Date("2024-01-22");
+        // If both API calls failed, throw an error instead of showing mock data
+        if (hasCounselorError && hasTutorError) {
+          throw new Error(apiErrors.join("; ") || "Failed to fetch sessions");
+        }
 
-          const mockSessions = [
-            {
-              id: "mock-tutor-1",
-              date: today.toISOString().split("T")[0],
-              startTime: "14:00",
-              endTime: "15:00",
-              duration: 60,
-              status: "pending",
-              sessionType: "virtual",
-              notes: "Algebra help needed",
-              subject: { name: "Mathematics" },
-              provider: {
-                name: "Dr. Sarah Johnson",
-                specialization: "Math Tutor",
-                type: "tutor",
-              },
-              serviceType: "tutoring",
-              meetingLink: "#",
-            },
-            {
-              id: "mock-tutor-2",
-              date: tomorrow.toISOString().split("T")[0],
-              startTime: "16:00",
-              endTime: "17:00",
-              duration: 60,
-              status: "confirmed",
-              sessionType: "virtual",
-              notes: "Physics problem solving",
-              subject: { name: "Physics" },
-              provider: {
-                name: "Prof. David Wilson",
-                specialization: "Physics Tutor",
-                type: "tutor",
-              },
-              serviceType: "tutoring",
-              meetingLink: "#",
-            },
-            {
-              id: "mock-counselor-1",
-              date: tomorrow.toISOString().split("T")[0],
-              startTime: "10:00",
-              endTime: "11:00",
-              duration: 60,
-              status: "confirmed",
-              sessionType: "virtual",
-              notes: "Academic planning session",
-              subject: { name: "Academic Counseling" },
-              provider: {
-                name: "Dr. Michael Chen",
-                specialization: "Academic Counselor",
-                type: "counselor",
-              },
-              serviceType: "counseling",
-              meetingLink: "#",
-            },
-            {
-              id: "mock-counselor-2",
-              date: dayAfter.toISOString().split("T")[0],
-              startTime: "15:00",
-              endTime: "16:00",
-              duration: 60,
-              status: "pending",
-              sessionType: "virtual",
-              notes: "Career guidance discussion",
-              subject: { name: "Career Counseling" },
-              provider: {
-                name: "Dr. Lisa Rodriguez",
-                specialization: "Career Counselor",
-                type: "counselor",
-              },
-              serviceType: "counseling",
-              meetingLink: "#",
-            },
-          ];
-          allSessions = mockSessions;
+        // If at least one API call failed but we have some data, show a warning but still display the data
+        if ((hasCounselorError || hasTutorError) && allSessions.length > 0) {
+          console.warn("Partial data loaded:", {
+            counselorFailed: hasCounselorError,
+            tutorFailed: hasTutorError,
+            sessionsLoaded: allSessions.length
+          });
         }
 
         // Deduplicate sessions across sources (counselor + tutor) using booking ID
@@ -394,7 +337,6 @@ function StudentSessions() {
         );
         // Refresh sessions to get latest data
         await fetchSessions(statusFilter, serviceTypeFilter);
-        setIsDetailsModalOpen(false);
       } else {
         throw new Error(response?.message || "Failed to cancel session");
       }

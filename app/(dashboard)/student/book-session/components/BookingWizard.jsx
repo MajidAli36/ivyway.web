@@ -1492,7 +1492,10 @@ export default function BookingWizard({ onComplete }) {
                 setSuccessCountdown((s) => {
                   if (s <= 1) {
                     clearInterval(interval);
-                    router.push('/student/my-sessions');
+                    // Use setTimeout to avoid calling router.push during render
+                    setTimeout(() => {
+                      router.push('/student/my-sessions');
+                    }, 0);
                     return 0;
                   }
                   return s - 1;

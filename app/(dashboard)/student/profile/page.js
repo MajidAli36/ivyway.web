@@ -91,7 +91,48 @@ const StudentProfile = () => {
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
 
-  // Load profile data from API
+  // Helper function to convert technical error messages to user-friendly ones
+  const getUserFriendlyError = (errorMessage) => {
+    if (!errorMessage) return "An error occurred. Please try again.";
+    
+    // Handle enum validation errors
+    if (errorMessage.includes("enum") && errorMessage.includes("preferredFormat")) {
+      return "Please select a valid tutoring format (Online, In-Person, or Hybrid), or leave it blank.";
+    }
+    if (errorMessage.includes("enum") && errorMessage.includes("academicStanding")) {
+      return "Please select a valid academic standing, or leave it blank.";
+    }
+    if (errorMessage.includes("enum") && errorMessage.includes("program")) {
+      return "Please select a valid program.";
+    }
+    if (errorMessage.includes("enum")) {
+      return "Please select a valid option from the dropdown menu.";
+    }
+    
+    // Handle other common validation errors
+    if (errorMessage.includes("SequelizeValidationError") || errorMessage.includes("ValidationError")) {
+      return "Please check your input and try again.";
+    }
+    if (errorMessage.includes("invalid input") || errorMessage.includes("invalid value")) {
+      return "Please ensure all fields contain valid information.";
+    }
+    if (errorMessage.includes("notNull") || errorMessage.includes("cannot be null")) {
+      return "Please fill in all required fields.";
+    }
+    if (errorMessage.includes("must be") && errorMessage.includes("character")) {
+      return errorMessage; // Keep length validation messages as they're already user-friendly
+    }
+    
+    // Keep already user-friendly messages
+    if (errorMessage.startsWith("Please ") || errorMessage.startsWith("Enter ") || errorMessage.startsWith("Select ")) {
+      return errorMessage;
+    }
+    
+    // Generic fallback for technical errors
+    return "Unable to save your profile. Please check all fields and try again.";
+  };
+
+   // Load profile data from API
   useEffect(() => {
     loadProfile();
   }, []);
@@ -152,7 +193,8 @@ const StudentProfile = () => {
         );
       }
     } catch (err) {
-      setError(err.message || "Failed to load profile");
+      const errorMessage = err.message || "Failed to load profile";
+      setError(getUserFriendlyError(errorMessage));
     } finally {
       setIsLoading(false);
     }
@@ -432,9 +474,11 @@ const StudentProfile = () => {
       .min(new Date().getFullYear(), `Graduation year must be ${new Date().getFullYear()} or later`)
       .max(new Date().getFullYear() + 10, `Graduation year must be before ${new Date().getFullYear() + 11}`),
     academicStanding: Yup.string()
+      .nullable()
       .max(50, "Academic standing must be less than 50 characters"),
     preferredFormat: Yup.string()
-      .oneOf(["online", "in-person", "hybrid"], "Please select a valid format"),
+      .nullable()
+      .oneOf(["online", "in-person", "hybrid", null], "Please select a valid format"),
     additionalNotes: Yup.string()
       .max(500, "Additional notes must be less than 500 characters"),
     subjects: Yup.array()
@@ -449,17 +493,18 @@ const StudentProfile = () => {
     setError("");
 
     try {
+      // Clean up enum fields - convert empty strings to null
       const profileData = {
         phoneNumber: values.phoneNumber,
         dateOfBirth: values.dateOfBirth,
         bio: values.bio,
-        program: values.program,
+        program: values.program || null,
         major: values.major,
         gpa: values.gpa || null,
         expectedGraduation: values.expectedGraduation || null,
-        academicStanding: values.academicStanding || null,
+        academicStanding: values.academicStanding && values.academicStanding.trim() !== "" ? values.academicStanding : null,
         enrollmentDate: values.enrollmentDate,
-        preferredFormat: values.preferredFormat || null,
+        preferredFormat: values.preferredFormat && values.preferredFormat.trim() !== "" ? values.preferredFormat : null,
         additionalNotes: values.additionalNotes || null,
         subjects: values.subjects || [],
         availability: values.availability || [],
@@ -482,11 +527,45 @@ const StudentProfile = () => {
         throw new Error("Profile update failed - no data response");
       }
     } catch (err) {
-      setError(err.message || "Failed to update profile");
+      console.error("Profile update error:", err);
+      
+      // Extract error message from various possible error formats
+      let errorMessage = "";
+      
+      // Check for error in different formats (from service or axios-style)
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.response?.data) {
+        // Try to extract message from nested error objects
+        const data = err.response.data;
+        if (typeof data === 'string') {
+          errorMessage = data;
+        } else if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          errorMessage = data.errors[0].message || data.errors[0].msg || "Validation error";
+        } else {
+          errorMessage = JSON.stringify(data);
+        }
+      } else {
+        errorMessage = "Failed to update profile";
+      }
+      
+      // Convert to user-friendly message
+      const friendlyMessage = getUserFriendlyError(errorMessage);
+      setError(friendlyMessage);
+      
       // Set field-level errors if available
-      if (err.response?.data?.errors) {
-        err.response.data.errors.forEach((error) => {
-          setFieldError(error.field, error.message);
+      const errors = err.errors || err.response?.data?.errors;
+      if (errors && Array.isArray(errors)) {
+        errors.forEach((error) => {
+          const fieldName = error.field || error.path || error.param;
+          const fieldMessage = getUserFriendlyError(error.message || error.msg);
+          if (fieldName) {
+            setFieldError(fieldName, fieldMessage);
+          }
         });
       }
     } finally {
