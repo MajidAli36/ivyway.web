@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   CalendarIcon,
   ChatBubbleLeftIcon,
-  UserIcon,
   BookOpenIcon,
   ClockIcon,
   BellIcon,
@@ -14,8 +13,6 @@ import {
   ExclamationTriangleIcon,
   VideoCameraIcon,
 } from "@heroicons/react/24/outline";
-import { StarIcon } from "@heroicons/react/24/solid";
-import Image from "next/image";
 import { useStudentDashboard } from "../../hooks/useDashboard";
 import useStudentProfile from "../../hooks/useStudentProfile";
 import { useAuth } from "../../providers/AuthProvider";
@@ -25,7 +22,6 @@ import UpcomingSessions, {
 } from "../../components/dashboard/UpcomingSessions";
 import UnreviewedSessions from "../../components/rating/UnreviewedSessions";
 import ReactAIWidget from "../../components/ai-chat/ReactAIWidget";
-import NotificationWidget from "../../components/dashboard/NotificationWidget";
 import { zoomService } from "../../lib/api/zoomService";
 import MeetingCard from "../../components/meetings/MeetingCard";
 
@@ -225,7 +221,7 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-stone-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-stone-100 p-6 max-w-7xl mx-auto">
       {/* Header with greeting and refresh button */}
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -242,16 +238,6 @@ export default function StudentDashboard() {
             </p>
           )}
         </div>
-        <button
-          onClick={refreshDashboard}
-          disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <ArrowPathIcon
-            className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
-          />
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -263,9 +249,9 @@ export default function StudentDashboard() {
       />
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        {/* Upcoming Sessions - Wider card */}
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-8">
+        {/* Upcoming Sessions */}
+        <div>
           <StudentSessions
             sessions={dashboardData?.upcomingSessions || []}
             loading={loading}
@@ -322,8 +308,8 @@ export default function StudentDashboard() {
             </div>
           )}
 
-          {/* Action Cards in 2 columns */}
-          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {/* Action Cards */}
+          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-2xl transition-transform hover:translate-y-[-4px]">
               <div className="px-5 py-5">
                 <div className="flex items-center">
@@ -373,121 +359,35 @@ export default function StudentDashboard() {
                 </Link>
               </div>
             </div>
+
+            <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-2xl transition-transform hover:translate-y-[-4px]">
+              <div className="px-5 py-5">
+                <div className="flex items-center">
+                  <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                    <BellIcon className="h-6 w-6 text-blue-500" />
+                  </div>
+                  <h3 className="ml-3 text-lg font-medium text-[#243b53]">
+                    Notifications
+                  </h3>
+                </div>
+                <div className="mt-3 text-sm text-[#4b5563]">
+                  View alerts and updates
+                </div>
+              </div>
+              <div className="bg-gray-50 px-5 py-3 flex justify-end">
+                <Link
+                  href="/student/notifications"
+                  className="font-medium text-blue-500 hover:text-blue-600 text-sm flex items-center"
+                >
+                  View notifications
+                  <ChevronRightIcon className="ml-1 h-4 w-4" />
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-8">
-          {/* Notification Widget */}
-          <NotificationWidget
-            href="/student/notifications"
-            showDetails={true}
-            maxNotifications={3}
-          />
-
-          {/* Profile Card */}
-          <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden">
-            <div className="border-b border-gray-100 px-6 py-5">
-              <h2 className="text-xl font-semibold text-[#243b53] flex items-center">
-                <UserIcon className="h-6 w-6 mr-2 text-blue-600" />
-                My Profile
-              </h2>
-            </div>
-
-            <div className="px-6 py-5 flex flex-col items-center text-center">
-              <div className="relative">
-                {profileLoading ? (
-                  <div className="h-24 w-24 rounded-full bg-blue-500 animate-pulse" />
-                ) : (
-                  <Image
-                    src={
-                      dashboardData?.profile?.profileImage ||
-                      studentProfile?.profileImage ||
-                      "/default-avatar.png"
-                    }
-                    alt={getDisplayName(currentUser?.email) || "Student"}
-                    width={96}
-                    height={96}
-                    className="h-24 w-24 rounded-full object-cover ring-4 ring-white shadow"
-                  />
-                )}
-                <div className="absolute -bottom-1 -right-1 bg-[#dbeafe] p-1 rounded-full border-2 border-white">
-                  <StarIcon className="h-5 w-5 text-blue-500" />
-                </div>
-              </div>
-
-              <h3 className="mt-4 text-xl font-medium text-[#243b53]">
-                {profileLoading ? (
-                  <div className="animate-pulse bg-gray-200 h-6 w-32 rounded"></div>
-                ) : (
-                  getDisplayName(currentUser?.email)
-                )}
-              </h3>
-              <p className="text-sm text-[#6b7280]">
-                {profileLoading ? (
-                  <span className="animate-pulse bg-gray-200 h-4 w-40 rounded mt-1 inline-block"></span>
-                ) : (
-                  currentUser?.email
-                )}
-              </p>
-
-              <div className="mt-5 grid grid-cols-1 gap-3 w-full">
-                <div className="bg-gray-50 rounded-xl p-4 text-left">
-                  <p className="text-xs uppercase tracking-wide text-[#6b7280] mb-1">
-                    Bio
-                  </p>
-                  <p className="text-[#334e68]">
-                    {dashboardData?.profile?.bio || studentProfile?.bio || "Tell tutors a bit about yourself."}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 px-6 py-4">
-              <Link
-                href="/student/profile"
-                className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#4f46e5] transition-all"
-              >
-                Update Profile
-              </Link>
-            </div>
-          </div>
-
-          {/* Learning Progress card removed as requested */}
-
-          {/* Recent Activities */}
-          {dashboardData?.recentActivities &&
-            dashboardData.recentActivities.length > 0 && (
-              <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden">
-                <div className="border-b border-gray-100 px-6 py-5">
-                  <h2 className="text-xl font-semibold text-[#243b53] flex items-center">
-                    <ClockIcon className="h-6 w-6 mr-2 text-blue-500" />
-                    Recent Activities
-                  </h2>
-                </div>
-
-                <div className="px-6 py-4 space-y-3">
-                  {dashboardData.recentActivities
-                    .slice(0, 3)
-                    .map((activity, index) => (
-                      <div key={index} className="flex items-center space-x-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <BookOpenIcon className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {activity.subject} session
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {activity.relativeTime || "Recently"}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-        </div>
+        
       </div>
 
       {/* ReAct AI Widget */}

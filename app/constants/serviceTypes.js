@@ -64,11 +64,9 @@ export const ServiceCategories = {
     textColor: "text-indigo-700",
     features: [
       "International student guidance",
-      "Visa and immigration support",
       "Cultural adaptation",
       "Academic planning",
       "Career counseling",
-      "University application assistance",
     ],
     pricing: {
       hourly: 120,

@@ -39,7 +39,7 @@ export default function ServiceCard({
 
   const getCardClasses = () => {
     const baseClasses =
-      "relative rounded-xl border transition-all duration-200 cursor-pointer";
+      "relative rounded-xl border transition-all duration-200 cursor-pointer h-full flex flex-col";
 
     if (variant === "compact") {
       return `${baseClasses} p-4 ${
@@ -147,17 +147,10 @@ export default function ServiceCard({
         }
       }}
     >
-      {/* Service Icon and Header */}
-      <div className="flex items-center mb-4">
-        <div
-          className={`h-12 w-12 rounded-lg ${category.bgColor} flex items-center justify-center mr-4`}
-        >
-          <IconComponent className={`h-6 w-6 ${category.textColor}`} />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold text-gray-900">{category.name}</h3>
-          <p className="text-sm text-gray-600">{category.description}</p>
-        </div>
+      {/* Header (icon removed) */}
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-gray-900">{category.name}</h3>
+        <p className="text-sm text-gray-600">{category.description}</p>
       </div>
 
       {/* Pricing Display */}
@@ -172,7 +165,7 @@ export default function ServiceCard({
           isSelected
             ? `bg-${category.color}-600 text-white`
             : `bg-${category.color}-50 text-${category.color}-600 hover:bg-${category.color}-100`
-        }`}
+        } mt-auto`}
       >
         {isSelected ? (
           <>
@@ -181,7 +174,7 @@ export default function ServiceCard({
           </>
         ) : (
           <>
-            Choose Service
+            Select
             <ArrowRightIcon className="h-4 w-4 ml-2" />
           </>
         )}

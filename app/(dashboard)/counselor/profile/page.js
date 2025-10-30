@@ -10,7 +10,6 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   CameraIcon,
-  ArrowPathIcon,
   DocumentCheckIcon,
   LanguageIcon,
   PlusIcon,
@@ -574,16 +573,6 @@ const CounselorProfile = () => {
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              <button
-                onClick={loadProfile}
-                disabled={isLoading}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
-              >
-                <ArrowPathIcon
-                  className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
-                />
-                Refresh
-              </button>
               {!isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
@@ -616,32 +605,16 @@ const CounselorProfile = () => {
               Profile Completion
             </h3>
             <span className="text-sm font-medium text-gray-500">
-              {profileCompletion}% Complete
+              {formData.profileCompletion || 0}% Complete
             </span>
           </div>
 
           <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
             <div
               className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-              style={{ width: `${profileCompletion}%` }}
+              style={{ width: `${formData.profileCompletion || 0}%` }}
             ></div>
           </div>
-
-          {missingFields.length > 0 && (
-            <div>
-              <p className="text-sm text-gray-600 mb-2">Missing information:</p>
-              <div className="flex flex-wrap gap-2">
-                {missingFields.map((field, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                  >
-                    {field}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Main Form */}

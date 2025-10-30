@@ -1,13 +1,6 @@
 "use client";
 import { useState } from "react";
 import {
-  CheckIcon,
-  StarIcon,
-  ClockIcon,
-  AcademicCapIcon,
-  CalendarIcon,
-} from "@heroicons/react/24/outline";
-import {
   formatPrice,
   formatDuration,
   getPlanTypeDisplayName,
@@ -56,18 +49,7 @@ export default function PlanCard({
     }
   };
 
-  const getPlanIcon = () => {
-    switch (type) {
-      case PlanTypes.MONTHLY:
-        return <CalendarIcon className="h-6 w-6" />;
-      case PlanTypes.MULTI_HOUR:
-        return <ClockIcon className="h-6 w-6" />;
-      case PlanTypes.SINGLE:
-        return <AcademicCapIcon className="h-6 w-6" />;
-      default:
-        return <StarIcon className="h-6 w-6" />;
-    }
-  };
+  // Icons removed for a cleaner card design
 
   const getCardClasses = () => {
     const baseClasses =
@@ -173,14 +155,9 @@ export default function PlanCard({
       </div>
 
       {/* Plan Header */}
-      <div className="flex items-center mb-4">
-        <div className="text-blue-600 mr-3">{getPlanIcon()}</div>
-        <div>
-          <h3 className="text-xl font-bold text-slate-800">{name}</h3>
-          <p className="text-sm text-gray-600">
-            {getPlanTypeDisplayName(type)}
-          </p>
-        </div>
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-800">{name}</h3>
+        <p className="text-sm text-gray-600">{getPlanTypeDisplayName(type)}</p>
       </div>
 
       {/* Price Display */}
@@ -209,7 +186,6 @@ export default function PlanCard({
         <div className="space-y-2.5 mb-4">
           {features.slice(0, 4).map((feature, index) => (
             <div key={index} className="flex items-start">
-              <CheckIcon className="h-4 w-4 text-green-500 mt-0.5 mr-3 flex-shrink-0" />
               <span className="text-sm text-gray-700">{feature}</span>
             </div>
           ))}
@@ -226,7 +202,6 @@ export default function PlanCard({
         <div className="space-y-2 mb-4">
           {features.slice(0, 3).map((feature, index) => (
             <div key={index} className="flex items-start">
-              <CheckIcon className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
               <span className="text-xs text-gray-700">{feature}</span>
             </div>
           ))}
@@ -252,10 +227,7 @@ export default function PlanCard({
             Loading...
           </div>
         ) : isSelected ? (
-          <div className="flex items-center justify-center">
-            <CheckIcon className="h-5 w-5 mr-2" />
-            Selected
-          </div>
+          <div className="flex items-center justify-center">Selected</div>
         ) : (
           "Select Plan"
         )}

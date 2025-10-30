@@ -104,12 +104,7 @@ export default function TutorBonusStats() {
               <li>• Build consecutive high ratings</li>
             </ul>
           </div>
-          <button
-            onClick={fetchBonusStats}
-            className="mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium"
-          >
-            Refresh
-          </button>
+          {/* Refresh removed as requested */}
         </div>
       </div>
     );
@@ -144,14 +139,7 @@ export default function TutorBonusStats() {
           <TrophyIcon className="h-5 w-5 mr-2 text-yellow-500" />
           Bonus Performance
         </h3>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={fetchBonusStats}
-            className="text-sm text-blue-600 hover:text-blue-700"
-          >
-            Refresh
-          </button>
-        </div>
+        {/* Refresh removed as requested */}
       </div>
 
       {/* Monthly Bonus Progress */}

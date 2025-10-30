@@ -4,12 +4,8 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 
 const navigation = [
   { name: "Dashboard", href: "/student", icon: "Home" },
-  { name: "Book Session", href: "/student/book-session", icon: "Calendar" },
-  // {
-  //   name: "Book Counselor",
-  //   href: "/student/book-counselor",
-  //   icon: "ChatBubbleLeft",
-  // },
+  { name: "Book a Tutor", href: "/student/book-session", icon: "Calendar" },
+  { name: "Book Counselor", href: "/student/book-counselor", icon: "ChatBubbleLeft" },
   { name: "My Sessions", href: "/student/my-sessions", icon: "DocumentText" },
   // { name: "Meetings", href: "/student/meetings", icon: "VideoCamera" },
   // { name: "Find Tutors", href: "/student/find-tutor", icon: "AcademicCap" },

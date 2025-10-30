@@ -15,7 +15,7 @@ export default function ServiceSelection({
 
   const services = [
     ServiceTypes.TUTORING,
-    ServiceTypes.COUNSELING,
+    // ServiceTypes.COUNSELING,
     ServiceTypes.TEST_PREP,
     ServiceTypes.IWGSP,
   ];
@@ -25,7 +25,7 @@ export default function ServiceSelection({
       return "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4";
     }
     if (variant === "featured") {
-      return "grid grid-cols-1 md:grid-cols-2 gap-8";
+      return "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8";
     }
     return "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6";
   };
@@ -60,38 +60,7 @@ export default function ServiceSelection({
         ))}
       </div>
 
-      {/* Service Comparison */}
-      {variant === "featured" && (
-        <div className="mt-12 bg-gray-50 rounded-xl p-8">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">
-            Not sure which service is right for you?
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <h4 className="font-medium text-gray-900">
-                Choose Tutoring if you need:
-              </h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Help with specific subjects (Math, Science, English)</li>
-                <li>• Homework assistance and exam preparation</li>
-                <li>• Regular academic support and progress tracking</li>
-                <li>• Subject-specific expertise and teaching</li>
-              </ul>
-            </div>
-            <div className="space-y-4">
-              <h4 className="font-medium text-gray-900">
-                Choose Counseling if you need:
-              </h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Career guidance and academic planning</li>
-                <li>• Study strategies and goal setting</li>
-                <li>• College preparation and application support</li>
-                <li>• Long-term educational guidance</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
+   
     </div>
   );
 }

@@ -17,66 +17,20 @@ import {
 import { format } from "date-fns";
 import { counselorBookings } from "@/app/lib/api/endpoints";
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
-import apiClient from "@/app/lib/api/client";
 import authService from "@/app/lib/auth/authService";
 
-// Mock data for demonstration - replace with actual API calls
-const mockRequests = [
-  {
-    id: "req_001",
-    studentId: "student_123",
-    studentName: "Emma Davis",
-    studentEmail: "emma.davis@email.com",
-    studentGrade: "11th Grade",
-    sessionType: "60min",
-    sessionDate: "2024-01-15",
-    sessionTime: "14:00",
-    status: "pending",
-    notes: "Need help with college application strategy and essay review",
-    requestedAt: "2024-01-10T10:30:00Z",
-    subject: "College Admissions",
-    topic: "Application Strategy",
-    price: 40,
-    counselorEarnings: 30,
-  },
-  {
-    id: "req_002",
-    studentId: "student_456",
-    studentName: "James Wilson",
-    studentEmail: "james.wilson@email.com",
-    studentGrade: "10th Grade",
-    sessionType: "30min",
-    sessionDate: "2024-01-16",
-    sessionTime: "16:00",
-    status: "accepted",
-    notes: "Career guidance and study planning",
-    requestedAt: "2024-01-11T09:15:00Z",
-    subject: "Career Planning",
-    topic: "Study Planning",
-    price: 30,
-    counselorEarnings: 20,
-  },
-  {
-    id: "req_003",
-    studentId: "student_789",
-    studentName: "Sophie Martinez",
-    studentEmail: "sophie.martinez@email.com",
-    studentGrade: "12th Grade",
-    sessionType: "60min",
-    sessionDate: "2024-01-17",
-    sessionTime: "11:00",
-    status: "declined",
-    notes: "Scholarship application assistance",
-    requestedAt: "2024-01-12T14:20:00Z",
-    subject: "Scholarships",
-    topic: "Application Assistance",
-    price: 40,
-    counselorEarnings: 30,
-    declineReason: "Schedule conflict",
-  },
-];
 
 function RequestCard({ request, onAccept, onDecline }) {
+  const safeFormat = (value, fmt) => {
+    try {
+      if (!value) return "-";
+      const dt = new Date(value);
+      if (isNaN(dt)) return "-";
+      return format(dt, fmt);
+    } catch (e) {
+      return "-";
+    }
+  };
   const getStatusColor = (status) => {
     switch (status) {
       case "pending":
@@ -126,7 +80,7 @@ function RequestCard({ request, onAccept, onDecline }) {
               <div className="flex items-center text-sm text-gray-600">
                 <CalendarIcon className="h-4 w-4 mr-2" />
                 <span>
-                  {format(new Date(request.sessionDate), "MMM dd, yyyy")}
+                  {safeFormat(request.sessionDate, "MMM dd, yyyy")}
                 </span>
               </div>
               <div className="flex items-center text-sm text-gray-600">
@@ -155,17 +109,10 @@ function RequestCard({ request, onAccept, onDecline }) {
             </div>
           )}
 
-          {request.status === "declined" && request.declineReason && (
-            <div className="mb-4">
-              <p className="text-sm text-red-600">
-                <span className="font-medium">Decline Reason:</span>{" "}
-                {request.declineReason}
-              </p>
-            </div>
-          )}
+          {/* Decline reason hidden per request */}
 
           <div className="text-xs text-gray-500">
-            Requested: {format(new Date(request.requestedAt), "MMM dd, yyyy 'at' h:mm a")}
+            Requested: {safeFormat(request.requestedAt, "MMM dd, yyyy 'at' h:mm a")}
           </div>
         </div>
 
@@ -281,7 +228,14 @@ function RequestModal({ isOpen, closeModal, request, onAccept, onDecline, startD
                     <div>
                       <p className="text-sm font-medium text-gray-900">Date</p>
                       <p className="text-sm text-gray-600">
-                        {format(new Date(request.sessionDate), "MMM dd, yyyy")}
+                        {(() => {
+                          try {
+                            const dt = new Date(request.sessionDate);
+                            return isNaN(dt) ? "-" : format(dt, "MMM dd, yyyy");
+                          } catch {
+                            return "-";
+                          }
+                        })()}
                       </p>
                     </div>
                     <div>
@@ -391,12 +345,13 @@ export default function CounselorRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [showModal, setShowModal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmType, setConfirmType] = useState(null); // 'accept' | 'decline'
+  const [targetRequest, setTargetRequest] = useState(null);
+  const [declineReason, setDeclineReason] = useState("");
   const [filter, setFilter] = useState("all"); // all, pending, accepted, declined
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [notification, setNotification] = useState(null); // legacy, replaced by toast but kept harmless
-  const [openDeclineOnShow, setOpenDeclineOnShow] = useState(false);
+  
 
   // Check authentication
   useEffect(() => {
@@ -409,16 +364,7 @@ export default function CounselorRequestsPage() {
     checkAuth();
   }, []);
 
-  // Auto-dismiss notifications
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 5000); // Auto-dismiss after 5 seconds
-
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
+  
 
   // Fetch requests
   useEffect(() => {
@@ -467,68 +413,8 @@ export default function CounselorRequestsPage() {
         setRequests(uniqueRequests);
         setError(null);
       } else {
-        console.error("API call failed, using mock data for testing:", result.error);
-        
-        // Use mock data when API fails
-        const mockRequests = [
-          {
-            id: "req_001",
-            studentId: "student_123",
-            studentName: "Emma Davis",
-            studentEmail: "emma.davis@email.com",
-            studentGrade: "11th Grade",
-            sessionType: "60min",
-            sessionDate: "2024-01-15",
-            sessionTime: "14:00",
-            status: "pending",
-            notes: "Need help with college application strategy",
-            subject: "Academic Counseling",
-            topic: "College Admissions",
-            requestedAt: "2024-01-10T10:30:00Z",
-            price: 40,
-            counselorEarnings: 30,
-            student: {
-              id: "student_123",
-              name: "Emma Davis",
-              email: "emma.davis@email.com",
-              grade: "11th Grade",
-              avatar: "/default-avatar.png"
-            }
-          },
-          {
-            id: "req_002",
-            studentId: "student_456",
-            studentName: "Michael Chen",
-            studentEmail: "michael.chen@email.com",
-            studentGrade: "12th Grade",
-            sessionType: "30min",
-            sessionDate: "2024-01-16",
-            sessionTime: "10:00",
-            status: "accepted",
-            notes: "Career guidance session",
-            subject: "Academic Counseling",
-            topic: "Career Planning",
-            requestedAt: "2024-01-11T09:15:00Z",
-            price: 30,
-            counselorEarnings: 20,
-            student: {
-              id: "student_456",
-              name: "Michael Chen",
-              email: "michael.chen@email.com",
-              grade: "12th Grade",
-              avatar: "/default-avatar.png"
-            }
-          }
-        ];
-        
-        // Deduplicate requests by ID to prevent duplicates
-        const uniqueRequests = mockRequests.filter((request, index, self) => 
-          index === self.findIndex(r => r.id === request.id)
-        );
-        
-        setRequests(uniqueRequests);
-        setError(null);
-        console.log("Using mock requests data for testing");
+        console.error("Failed to load requests:", result.error);
+        setError("Failed to load requests. Please try again.");
       }
       
       setLoading(false);
@@ -537,13 +423,14 @@ export default function CounselorRequestsPage() {
     fetchRequests();
   }, []);
 
-  const handleViewRequest = (request) => {
-    setSelectedRequest(request);
-    setOpenDeclineOnShow(false);
-    setShowModal(true);
+  const handleAcceptRequest = async (request) => {
+    // Open confirmation modal first
+    setTargetRequest(request);
+    setConfirmType('accept');
+    setConfirmOpen(true);
   };
 
-  const handleAcceptRequest = async (request) => {
+  const doAcceptRequest = async (request) => {
     try {
       // Accept request via API with proper error handling
       const result = await safeApiCall(
@@ -572,22 +459,7 @@ export default function CounselorRequestsPage() {
         toast.success('Request accepted');
       } else {
         console.error("Error accepting request:", result.error);
-        
-        // Check if it's a 404 error (endpoint not implemented)
-        if (result.error.includes("not found") || result.error.includes("404")) {
-          console.log("API endpoint not implemented, simulating accept action...");
-          
-          // Simulate the accept action locally
-          setRequests(prev =>
-            prev.map(req =>
-              req.id === request.id ? { ...req, status: "accepted" } : req
-            )
-          );
-          
-          toast.success('Request accepted');
-        } else {
-          toast.error(`Failed to accept request: ${result.error}`);
-        }
+        toast.error(`Failed to accept request: ${result.error}`);
       }
     } catch (error) {
       console.error("Unexpected error accepting request:", error);
@@ -595,20 +467,22 @@ export default function CounselorRequestsPage() {
     }
   };
 
-  const handleDeclineRequest = async (request, reason) => {
-    // If no reason provided (clicked from card), open modal with decline form
-    if (!reason) {
-      setSelectedRequest(request);
-      setOpenDeclineOnShow(true);
-      setShowModal(true);
-      return;
-    }
+  const handleDeclineRequest = async (request) => {
+    // Open confirmation modal with reason input
+    setTargetRequest(request);
+    setConfirmType('decline');
+    setDeclineReason("");
+    setConfirmOpen(true);
+  };
+
+  const doDeclineRequest = async (request, reason) => {
+    const finalReason = (reason && String(reason).trim()) || "Not available at the requested time";
     try {
       // Decline request via API with proper error handling
       const result = await safeApiCall(
         () => counselorBookings.declineRequest(request.id, {
-          reason: reason,
-          message: `I'm not available at that time. ${reason}`
+          reason: finalReason,
+          message: `I'm not available at that time. ${finalReason}`
         }),
         {
           extractArray: false,
@@ -622,36 +496,15 @@ export default function CounselorRequestsPage() {
         console.log("Request declined:", result.data);
         
         // Update local state
-        setRequests(prev =>
-          prev.map(req =>
-            req.id === request.id 
-              ? { ...req, status: "declined", declineReason: reason }
-              : req
-          )
-        );
+        setRequests(prev => prev.map(req => (
+          req.id === request.id ? { ...req, status: "declined" } : req
+        )));
         
-        console.log("Request declined successfully:", request.id, "Reason:", reason);
+        console.log("Request declined successfully:", request.id, "Reason:", finalReason);
         toast.success('Request declined');
       } else {
         console.error("Error declining request:", result.error);
-        
-        // Check if it's a 404 error (endpoint not implemented)
-        if (result.error.includes("not found") || result.error.includes("404")) {
-          console.log("API endpoint not implemented, simulating decline action...");
-          
-          // Simulate the decline action locally
-          setRequests(prev =>
-            prev.map(req =>
-              req.id === request.id 
-                ? { ...req, status: "declined", declineReason: reason }
-                : req
-            )
-          );
-          
-          toast.success('Request declined');
-        } else {
-          toast.error(`Failed to decline request: ${result.error}`);
-        }
+        toast.error(`Failed to decline request: ${result.error}`);
       }
     } catch (error) {
       console.error("Unexpected error declining request:", error);
@@ -869,19 +722,63 @@ export default function CounselorRequestsPage() {
         </div>
       </div>
 
-      {/* Request Modal */}
-      <RequestModal
-        isOpen={showModal}
-        closeModal={() => {
-          setShowModal(false);
-          setSelectedRequest(null);
-          setOpenDeclineOnShow(false);
-        }}
-        request={selectedRequest}
-        onAccept={handleAcceptRequest}
-        onDecline={handleDeclineRequest}
-        startDecline={openDeclineOnShow}
-      />
+      {/* Confirm Modal */}
+      {confirmOpen && targetRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md mx-4 bg-white rounded-lg shadow-xl p-5">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {confirmType === 'accept' ? 'Confirm Accept' : 'Confirm Decline'}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {confirmType === 'accept'
+                ? 'Are you sure you want to accept this request? A notification will be sent to the student.'
+                : 'Are you sure you want to decline this request? A notification will be sent to the student.'}
+            </p>
+            {confirmType === 'decline' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                <textarea
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  rows={3}
+                  placeholder="Brief reason to help the student"
+                  value={declineReason}
+                  onChange={(e) => setDeclineReason(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded border text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setConfirmType(null);
+                  setTargetRequest(null);
+                  setDeclineReason("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className={`px-4 py-2 rounded text-white ${confirmType === 'accept' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                onClick={async () => {
+                  const req = targetRequest;
+                  setConfirmOpen(false);
+                  setConfirmType(null);
+                  setTargetRequest(null);
+                  if (confirmType === 'accept') {
+                    await doAcceptRequest(req);
+                  } else {
+                    await doDeclineRequest(req, declineReason);
+                  }
+                  setDeclineReason("");
+                }}
+              >
+                {confirmType === 'accept' ? 'Confirm Accept' : 'Confirm Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

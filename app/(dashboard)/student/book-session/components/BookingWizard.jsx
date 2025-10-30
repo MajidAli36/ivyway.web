@@ -10,16 +10,11 @@ import SessionForm from "./SessionForm";
 import BookingSummary from "./BookingSummary";
 import PaymentForm from "@/app/components/payment/PaymentForm";
 import apiClient from "@/app/lib/api/client";
-import PlanCard from "../../../../components/plans/PlanCard";
-import PlanFilters from "../../../../components/plans/PlanFilters";
-import PlansAPI from "../../../../lib/api/plans";
 import toast from "react-hot-toast";
 import { apiPost, apiGet } from "../../utils/api";
+import PlanCard from "../../../../components/plans/PlanCard";
 import ServiceSelection from "../../../../components/services/ServiceSelection";
-import {
-  ServiceTypes,
-  getServicePlans,
-} from "../../../../constants/serviceTypes";
+import { ServiceTypes, getServicePlans } from "../../../../constants/serviceTypes";
 import { getParentSubject } from "../../../../constants/enhancedSubjects";
 import { getProfileImageUrl } from "@/app/utils/profileImage";
 
@@ -60,16 +55,11 @@ export default function BookingWizard({ onComplete }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [selectedService, setSelectedService] = useState(ServiceTypes.TUTORING);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState(null);
-  const [planFilters, setPlanFilters] = useState({
-    type: "",
-    priceRange: { min: "", max: "" },
-  });
-  const [planSearch, setPlanSearch] = useState("");
-  const [selectedService, setSelectedService] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
   const [paymentAmountInCents, setPaymentAmountInCents] = useState(0);
@@ -93,25 +83,24 @@ export default function BookingWizard({ onComplete }) {
   useEffect(() => {
     if (!authenticated) return;
 
-    // Check for reschedule or change plan data
+    // Check for reschedule data (keep tutoring-only flow)
     const urlParams = new URLSearchParams(window.location.search);
     const isReschedule = urlParams.get("reschedule") === "true";
-    const isChangePlan = urlParams.get("changePlan") === "true";
 
     if (isReschedule) {
       const rescheduleData = localStorage.getItem("rescheduleData");
       if (rescheduleData) {
         try {
           const data = JSON.parse(rescheduleData);
-          setSelectedService(data.serviceType || ServiceTypes.TUTORING);
+          setSelectedService(ServiceTypes.TUTORING);
           setBookingData((prev) => ({
             ...prev,
-            serviceType: data.serviceType,
+            serviceType: ServiceTypes.TUTORING,
             subject: data.subject,
             providerId: data.providerId,
             rescheduleSessionId: data.rescheduleSessionId,
           }));
-          setCurrentStep(1); // Start at plan selection for reschedule
+          setCurrentStep(4); // Jump to date & time in full flow
           localStorage.removeItem("rescheduleData");
           return;
         } catch (e) {
@@ -121,48 +110,19 @@ export default function BookingWizard({ onComplete }) {
       }
     }
 
-    if (isChangePlan) {
-      const changePlanData = localStorage.getItem("changePlanData");
-      if (changePlanData) {
-        try {
-          const data = JSON.parse(changePlanData);
-          setSelectedService(data.serviceType || ServiceTypes.TUTORING);
-          setBookingData((prev) => ({
-            ...prev,
-            serviceType: data.serviceType,
-            subject: data.subject,
-            providerId: data.providerId,
-            changePlanSessionId: data.changePlanSessionId,
-          }));
-          setCurrentStep(1); // Start at plan selection for change plan
-          localStorage.removeItem("changePlanData");
-          return;
-        } catch (e) {
-          console.error("Error parsing change plan data:", e);
-          localStorage.removeItem("changePlanData");
-        }
-      }
-    }
-
     // Check for service type from URL params only (ignore localStorage for fresh start)
-    const serviceFromUrl = urlParams.get("service");
-    const serviceType = serviceFromUrl || ServiceTypes.TUTORING;
-
-    setSelectedService(serviceType);
-    setBookingData((prev) => ({ ...prev, serviceType }));
+    setSelectedService(ServiceTypes.TUTORING);
+    setBookingData((prev) => ({ ...prev, serviceType: ServiceTypes.TUTORING }));
 
     const pendingBooking = localStorage.getItem("pendingBooking");
     if (pendingBooking) {
       try {
         const savedData = JSON.parse(pendingBooking);
         setBookingData(savedData);
-        setSelectedService(savedData.serviceType || ServiceTypes.TUTORING);
+        setSelectedService(ServiceTypes.TUTORING);
 
         if (savedData.subject) {
-          fetchProvidersBySubject(
-            savedData.subject,
-            savedData.serviceType || ServiceTypes.TUTORING
-          );
+          fetchProvidersBySubject(savedData.subject, ServiceTypes.TUTORING);
           if (savedData.providerId) {
             if (savedData.startTimeISO) {
               setCurrentStep(savedData.notes ? 6 : 5);
@@ -187,7 +147,6 @@ export default function BookingWizard({ onComplete }) {
 
       // Start from step 0 (service selection) for fresh booking flow
       setCurrentStep(0);
-
       // Load any existing active plan for display purposes only
       const storedPlan = localStorage.getItem("activePlan");
       if (storedPlan) {
@@ -210,34 +169,28 @@ export default function BookingWizard({ onComplete }) {
 
     const fetchPlans = async () => {
       try {
-        // First try to get real plans from API
         const response = await apiGet("plans");
         const apiPlans = Array.isArray(response.data)
           ? response.data
           : response.plans || [];
 
         if (apiPlans.length > 0) {
-          // Filter plans by service type if they have a serviceType field
           const filteredPlans = apiPlans.filter(
             (plan) => !plan.serviceType || plan.serviceType === selectedService
           );
-          // Only use filtered plans if we have plans for the specific service
           if (filteredPlans.length > 0) {
             setPlans(filteredPlans);
           } else {
-            // If no plans found for this service, use mock plans instead of all API plans
             const servicePlans = getServicePlans(selectedService);
             setPlans(servicePlans);
           }
         } else {
-          // Fallback to mock plans if no API plans available
           const servicePlans = getServicePlans(selectedService);
           setPlans(servicePlans);
         }
         setPlansLoading(false);
       } catch (err) {
         console.warn("Failed to fetch plans from API, using mock plans:", err);
-        // Fallback to mock plans on API error
         try {
           const servicePlans = getServicePlans(selectedService);
           setPlans(servicePlans);
@@ -258,6 +211,7 @@ export default function BookingWizard({ onComplete }) {
     }
   }, [selectedPlan]);
 
+
   const fetchProvidersBySubject = async (
     subject,
     serviceType = ServiceTypes.TUTORING
@@ -267,23 +221,18 @@ export default function BookingWizard({ onComplete }) {
     setLoading(true);
     setError(null);
     try {
-      // Determine the API endpoint based on service type
-      const endpoint =
-        serviceType === ServiceTypes.COUNSELING ? "counselors" : "tutors";
+      // Always use tutors endpoint (counseling removed from this flow)
+      const endpoint = "tutors";
       const response = await apiClient.get(
         `/${endpoint}?subject=${encodeURIComponent(subject)}`
       );
       console.log(`${serviceType} API response:`, response.data);
 
       // Extract providers from response
-      const fetchedProviders =
-        response.data?.tutors ||
-        response.data?.counselors ||
-        response.data ||
-        [];
+      const fetchedProviders = response.data?.tutors || response.data || [];
       setProviders(fetchedProviders);
     } catch (err) {
-      console.error(`Error fetching ${serviceType}:`, err);
+      console.error(`Error fetching tutors:`, err);
 
       // Handle authentication errors
       if (err.response?.status === 401) {
@@ -303,51 +252,32 @@ export default function BookingWizard({ onComplete }) {
   };
 
   const handleNext = async () => {
-    // Handle service selection on step 0
+    // Step 0: Service selection
     if (currentStep === 0) {
       if (!selectedService) {
         toast.error("Please select a service type to continue");
         return;
+      }
+      // Guard against any accidental counseling selection
+      if (selectedService === ServiceTypes.COUNSELING) {
+        setSelectedService(ServiceTypes.TUTORING);
       }
       setCurrentStep(1);
       window.scrollTo(0, 0);
       return;
     }
 
-    // Handle plan selection on step 1
+    // Step 1: Plan selection
     if (currentStep === 1) {
       if (!selectedPlan) {
         toast.error("Please select a plan to continue");
         return;
       }
 
-      // Check if this is a counseling plan - redirect to counselor booking flow
-      if (selectedService === ServiceTypes.COUNSELING) {
-        console.log(
-          "Counseling plan selected, redirecting to counselor booking flow"
-        );
-        toast.success("Redirecting to counselor booking...");
-
-        // Store the selected plan for counselor booking
-        localStorage.setItem(
-          "selectedCounselingPlan",
-          JSON.stringify(selectedPlan)
-        );
-
-        // Redirect to counselor booking page
-        router.push("/student/book-counselor");
-        return;
-      }
-
-      // Check if this is a mock plan (has string ID instead of UUID)
       const isMockPlan =
-        selectedPlan.id &&
-        typeof selectedPlan.id === "string" &&
-        !selectedPlan.id.includes("-");
+        selectedPlan.id && typeof selectedPlan.id === "string" && !selectedPlan.id.includes("-");
 
       if (isMockPlan) {
-        // For mock plans, skip activation and just proceed to next step
-        console.log("Mock plan selected, skipping activation:", selectedPlan);
         toast.success("Plan selected! Please note: This is a demo plan.");
         setCurrentStep(2);
         window.scrollTo(0, 0);
@@ -355,8 +285,6 @@ export default function BookingWizard({ onComplete }) {
       }
 
       try {
-        console.log("Selected plan for purchase:", selectedPlan);
-        // Use the UUID id for real API plans
         await apiPost("users/plan/change", { planId: selectedPlan.id });
         toast.success("Plan activated!");
         setCurrentStep(2);
@@ -368,14 +296,14 @@ export default function BookingWizard({ onComplete }) {
       }
     }
 
-    // Handle subject selection on step 2
+    // Step 2: Subject selection
     if (
       currentStep === 2 &&
       bookingData.subject &&
       bookingData.topic &&
       bookingData.gradeLevel
     ) {
-      fetchProvidersBySubject(bookingData.subject, selectedService);
+      fetchProvidersBySubject(bookingData.subject, ServiceTypes.TUTORING);
     }
 
     if (currentStep < steps.length - 1) {
@@ -421,7 +349,6 @@ export default function BookingWizard({ onComplete }) {
     // Use the selectedPlan from the component's state
     const currentPlan = selectedPlan;
 
-    // Ensure there is a plan to proceed
     if (!currentPlan) {
       setError("No plan selected. Please go back and select a plan.");
       toast.error("No plan selected. Please go back and select a plan.");
@@ -429,49 +356,18 @@ export default function BookingWizard({ onComplete }) {
       return;
     }
 
-    // Check if this is a counseling service - should not reach here due to redirect in handleNext
-    // But add safety check to prevent duplicate bookings
-    if (selectedService === ServiceTypes.COUNSELING) {
-      console.error(
-        "Counseling service reached handleSubmit - this should not happen!"
-      );
-      setError(
-        "Counseling services should be handled through the counselor booking flow."
-      );
-      toast.error(
-        "Please use the counselor booking flow for counseling services."
-      );
-      setLoading(false);
-      return;
-    }
-
-    // Check if this is a mock plan (has string ID instead of UUID)
     const isMockPlan =
-      currentPlan.id &&
-      typeof currentPlan.id === "string" &&
-      !currentPlan.id.includes("-");
+      currentPlan.id && typeof currentPlan.id === "string" && !currentPlan.id.includes("-");
 
-    // Calculate the correct price based on the actual duration selected
     let sessionPriceInCents;
-
     if (currentPlan.type === "single") {
-      // For single sessions, calculate price based on duration
-      // Base price is per hour (60 minutes), so calculate proportionally
-      const basePricePerHour = currentPlan.price; // $74.99 per hour
-      const durationInHours = bookingData.duration / 60; // Convert minutes to hours
+      const basePricePerHour = currentPlan.price;
+      const durationInHours = bookingData.duration / 60;
       const calculatedPrice = basePricePerHour * durationInHours;
       sessionPriceInCents = Math.round(calculatedPrice * 100);
-
-      console.log(
-        `Single session pricing: ${basePricePerHour}/hour × ${durationInHours} hours = $${calculatedPrice.toFixed(
-          2
-        )}`
-      );
     } else if (currentPlan.type === "multi_hour") {
-      // For multi-hour packages, use the calculated price from the duration selector
       sessionPriceInCents = Math.round(currentPlan.calculatedPrice * 100);
     } else {
-      // For monthly plans, use the plan price as is
       sessionPriceInCents = Math.round(currentPlan.calculatedPrice * 100);
     }
 
@@ -481,10 +377,8 @@ export default function BookingWizard({ onComplete }) {
 
     const bookingPayload = {
       providerId: bookingData.providerId,
-      providerRole:
-        bookingData.providerRole ||
-        (selectedService === ServiceTypes.COUNSELING ? "counselor" : "tutor"),
-      serviceType: selectedService,
+      providerRole: bookingData.providerRole || "tutor",
+      serviceType: ServiceTypes.TUTORING,
       startTime: bookingData.startTimeISO,
       endTime: bookingData.endTimeISO,
       sessionType: bookingData.sessionType || "virtual",
@@ -493,20 +387,18 @@ export default function BookingWizard({ onComplete }) {
       topic: bookingData.topic || "",
       status: "pending",
       availabilityId: bookingData.availabilityId,
-      // Handle mock plans by using a placeholder UUID or skipping planId
-      ...(isMockPlan
-        ? {
-            planName: currentPlan.name,
-            isDemoPlan: true,
-          }
-        : {
-            planId: currentPlan.id,
-            planName: currentPlan.name,
-          }),
       // Pass the correct amount to the backend
       amount: sessionPriceInCents,
       currency: "usd",
     };
+    // Attach plan details depending on real or mock
+    if (isMockPlan) {
+      bookingPayload.planName = currentPlan.name;
+      bookingPayload.isDemoPlan = true;
+    } else {
+      bookingPayload.planId = currentPlan.id;
+      bookingPayload.planName = currentPlan.name;
+    }
 
     console.log("Submitting with Final Booking Payload:", bookingPayload);
 
@@ -626,16 +518,19 @@ export default function BookingWizard({ onComplete }) {
     }
   };
 
-  // Service selection step UI
+  // Service and plan selection restored (tutors only)
   const renderServiceSelection = () => {
     return (
       <div>
         <ServiceSelection
           onSelectService={(serviceType) => {
-            setSelectedService(serviceType);
-            setBookingData((prev) => ({ ...prev, serviceType }));
-            // Save service selection to localStorage
-            localStorage.setItem("selectedService", serviceType);
+            // Prevent selecting counseling; default to tutoring
+            const nextService = serviceType === ServiceTypes.COUNSELING
+              ? ServiceTypes.TUTORING
+              : serviceType;
+            setSelectedService(nextService);
+            setBookingData((prev) => ({ ...prev, serviceType: nextService }));
+            localStorage.setItem("selectedService", nextService);
           }}
           selectedService={selectedService}
           variant="featured"
@@ -644,54 +539,23 @@ export default function BookingWizard({ onComplete }) {
     );
   };
 
-  // Plan selection step UI
   const renderPlanSelection = () => {
-    // Filter/search plans, ensuring 'plans' is always treated as an array to prevent crashes
     const planList = Array.isArray(plans) ? plans : [];
-    let filteredPlans = planList;
-    if (planFilters.type) {
-      filteredPlans = planList.filter((p) => p.type === planFilters.type);
-    }
-    if (planFilters.priceRange.min) {
-      filteredPlans = filteredPlans.filter(
-        (p) => p.calculatedPrice >= Number(planFilters.priceRange.min)
-      );
-    }
-    if (planFilters.priceRange.max) {
-      filteredPlans = filteredPlans.filter(
-        (p) => p.calculatedPrice <= Number(planFilters.priceRange.max)
-      );
-    }
-    if (planSearch) {
-      filteredPlans = filteredPlans.filter((p) =>
-        p.name.toLowerCase().includes(planSearch.toLowerCase())
-      );
-    }
 
     return (
       <div>
         <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-            Select a{" "}
-            {selectedService === ServiceTypes.COUNSELING
-              ? "Counseling"
-              : selectedService === ServiceTypes.TEST_PREP
+            Select a {selectedService === ServiceTypes.TEST_PREP
               ? "Test Prep"
               : selectedService === ServiceTypes.IWGSP
               ? "IWGSP"
-              : "Tutoring"}{" "}
-            Plan
+              : "Tutoring"} Plan
           </h2>
           <p className="text-gray-600 text-sm sm:text-base">
             Choose the plan that best fits your learning goals and budget
           </p>
         </div>
-
-        <PlanFilters
-          plans={plans}
-          onFilterChange={setPlanFilters}
-          onSearchChange={setPlanSearch}
-        />
 
         {plansLoading ? (
           <div className="text-center py-16">
@@ -731,15 +595,13 @@ export default function BookingWizard({ onComplete }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-            {filteredPlans.map((plan) => (
+            {planList.map((plan) => (
               <PlanCard
                 key={plan.id}
                 plan={plan}
                 isSelected={selectedPlan?.id === plan.id}
                 onSelect={setSelectedPlan}
-                disableHourSelection={
-                  selectedService === ServiceTypes.TEST_PREP
-                }
+                disableHourSelection={selectedService === ServiceTypes.TEST_PREP}
                 fixedHoursLabel={"10 sessions"}
               />
             ))}
@@ -1181,26 +1043,11 @@ export default function BookingWizard({ onComplete }) {
               <div>
                 <div className="text-center mb-8">
                   <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                    Choose a{" "}
-                    {selectedService === ServiceTypes.COUNSELING
-                      ? "Counselor"
-                      : selectedService === ServiceTypes.TEST_PREP
-                      ? "Test Prep Tutor"
-                      : selectedService === ServiceTypes.IWGSP
-                      ? "IWGSP Advisor"
-                      : "Tutor"}{" "}
+                    Choose a Tutor{" "}
                     for {bookingData.fullSubject || bookingData.subject}
                   </h2>
                   <p className="text-gray-600 text-sm sm:text-base">
-                    Select a qualified{" "}
-                    {selectedService === ServiceTypes.COUNSELING
-                      ? "counselor"
-                      : selectedService === ServiceTypes.TEST_PREP
-                      ? "test prep tutor"
-                      : selectedService === ServiceTypes.IWGSP
-                      ? "IWGSP advisor"
-                      : "tutor"}{" "}
-                    who specializes in{" "}
+                    Select a qualified tutor who specializes in{" "}
                     {bookingData.fullSubject || bookingData.subject}
                   </p>
                 </div>
@@ -1208,17 +1055,7 @@ export default function BookingWizard({ onComplete }) {
                 {loading ? (
                   <div className="text-center py-16">
                     <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600"></div>
-                    <p className="mt-4 text-gray-600 font-medium">
-                      Loading{" "}
-                      {selectedService === ServiceTypes.COUNSELING
-                        ? "counselors"
-                        : selectedService === ServiceTypes.TEST_PREP
-                        ? "test prep tutors"
-                        : selectedService === ServiceTypes.IWGSP
-                        ? "IWGSP advisors"
-                        : "tutors"}
-                      ...
-                    </p>
+                    <p className="mt-4 text-gray-600 font-medium">Loading tutors...</p>
                     <p className="text-sm text-gray-500 mt-1">
                       Please wait while we fetch the best{" "}
                       {selectedService === ServiceTypes.COUNSELING
@@ -1248,19 +1085,9 @@ export default function BookingWizard({ onComplete }) {
                         />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No{" "}
-                      {selectedService === ServiceTypes.COUNSELING
-                        ? "counselors"
-                        : "tutors"}{" "}
-                      available
-                    </h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No tutors available</h3>
                     <p className="text-gray-500 mb-6">
-                      No{" "}
-                      {selectedService === ServiceTypes.COUNSELING
-                        ? "counselors"
-                        : "tutors"}{" "}
-                      are currently available for{" "}
+                      No tutors are currently available for{" "}
                       {bookingData.fullSubject || bookingData.subject}.
                     </p>
                     <button
@@ -1277,18 +1104,14 @@ export default function BookingWizard({ onComplete }) {
                         key={provider.id}
                         tutor={{
                           id: provider.id,
-                          name:
+                            name:
                             provider.fullName ||
                             provider.name ||
-                            `${
-                              selectedService === ServiceTypes.COUNSELING
-                                ? "Counselor"
-                                : "Tutor"
-                            } #${provider.id}`,
+                            `Tutor #${provider.id}`,
                           image: getProfileImageUrl(
                             provider.profileImageUrl ||
                               provider.tutorProfile?.profileImageUrl ||
-                              provider.counselorProfile?.profileImageUrl ||
+                            provider.counselorProfile?.profileImageUrl ||
                               provider.tutorProfile?.profileImage ||
                               provider.counselorProfile?.profileImage ||
                               provider.profileImage ||
@@ -1318,15 +1141,8 @@ export default function BookingWizard({ onComplete }) {
                             providerName:
                               provider.fullName ||
                               provider.name ||
-                              `${
-                                selectedService === ServiceTypes.COUNSELING
-                                  ? "Counselor"
-                                  : "Tutor"
-                              } #${provider.id}`,
-                            providerRole:
-                              selectedService === ServiceTypes.COUNSELING
-                                ? "counselor"
-                                : "tutor",
+                              `Tutor #${provider.id}`,
+                            providerRole: "tutor",
                           })
                         }
                       />

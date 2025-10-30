@@ -12,13 +12,13 @@ import {
   ArrowTrendingUpIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
+  BellIcon,
 } from "@heroicons/react/24/outline";
 import { useTutorDashboard } from "../../hooks/useDashboard";
 import OverviewCards from "../../components/dashboard/OverviewCards";
 import UpcomingSessions, {
   TutorSessions,
 } from "../../components/dashboard/UpcomingSessions";
-import EarningsCharts from "../../components/dashboard/EarningsCharts";
 import TutorBonusStats from "../../components/rating/TutorBonusStats";
 import ReactAIWidget from "../../components/ai-chat/ReactAIWidget";
 
@@ -124,25 +124,7 @@ export default function TutorDashboard() {
             </p>
           )}
         </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={refreshDashboard}
-            disabled={refreshing}
-            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all ${
-              refreshing ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            <ArrowPathIcon
-              className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
-            />
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
-          <Link href="/tutor/schedule/availability">
-            <button className="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-xl shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all">
-              Update Availability
-            </button>
-          </Link>
-        </div>
+        
       </div>
 
       {/* Stats Grid */}
@@ -150,29 +132,6 @@ export default function TutorDashboard() {
 
       {/* Upcoming Sessions */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-            <CalendarIcon className="h-6 w-6 mr-2 text-blue-600" />
-            Upcoming Sessions
-          </h2>
-          <Link
-            href="/tutor/sessions"
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center"
-          >
-            View all sessions
-            <svg
-              className="ml-1 w-5 h-5"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </Link>
-        </div>
         <TutorSessions
           sessions={dashboardData?.upcomingSessions || []}
           loading={loading}
@@ -184,11 +143,28 @@ export default function TutorDashboard() {
       {/* Earnings Overview */}
       {dashboardData?.earnings && (
         <div className="bg-white shadow-md rounded-xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100">
+          <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-xl font-semibold text-gray-900 flex items-center">
               <CurrencyDollarIcon className="h-6 w-6 mr-2 text-blue-600" />
               Earnings Overview
             </h3>
+            <Link
+              href="/tutor/earnings"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center"
+            >
+              View detailed earnings
+              <svg
+                className="ml-1 w-5 h-5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </Link>
           </div>
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
@@ -227,88 +203,98 @@ export default function TutorDashboard() {
               {earningsProgress.toFixed(0)}% of your monthly target
             </p>
           </div>
-          <div className="bg-gray-50 px-6 py-4 flex justify-end">
-            <Link
-              href="/tutor/earnings"
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center"
-            >
-              View detailed earnings
-              <svg
-                className="ml-1 w-5 h-5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </Link>
-          </div>
+          
         </div>
       )}
 
-      {/* Earnings Charts */}
-      <EarningsCharts />
+      {/* Earnings Charts removed as requested */}
 
       {/* Bonus Performance Stats */}
       <TutorBonusStats />
 
-      {/* Recent Activities */}
-      {dashboardData?.recentActivities &&
-        dashboardData.recentActivities.length > 0 && (
-          <div className="bg-white shadow-md rounded-xl overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-                <ClockIcon className="h-6 w-6 mr-2 text-blue-600" />
-                Recent Activities
+      {/* Quick Actions */}
+      <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <CalendarIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Manage Schedule
               </h3>
             </div>
-            <div className="divide-y divide-gray-100">
-              {dashboardData.recentActivities
-                .slice(0, 5)
-                .map((activity, index) => (
-                  <div
-                    key={index}
-                    className="px-6 py-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-center text-white font-medium">
-                            {activity.studentName
-                              ? activity.studentName
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                              : "S"}
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-700">
-                            {activity.subject} session
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {activity.studentName} •{" "}
-                            {activity.relativeTime || "Recently"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">
-                          {activity.amount || "$0"}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {activity.duration || "60"} min
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            <div className="mt-3 text-sm text-gray-600">
+              View sessions and update availability
             </div>
           </div>
-        )}
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/tutor/schedule"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              Go to schedule
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <CurrencyDollarIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Earnings
+              </h3>
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              View payouts and earnings history
+            </div>
+          </div>
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/tutor/earnings"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              View earnings
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <BellIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Notifications
+              </h3>
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              Alerts and updates
+            </div>
+          </div>
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/tutor/notifications"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              View notifications
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* ReAct AI Widget */}
       <ReactAIWidget userRole="tutor" />

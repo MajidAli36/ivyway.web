@@ -50,7 +50,20 @@ export default function CounselorNotificationsPage() {
   const filteredNotifications = Array.isArray(notifications)
     ? notifications.filter((notification) => {
         if (filter === "all") return true;
-        return notification.type === filter;
+        if (filter === "bookings") {
+          return [
+            "booking_created",
+            "booking_confirmed",
+            "booking_cancelled",
+          ].includes(notification.type);
+        }
+        if (filter === "messages") {
+          return notification.type === "message_received";
+        }
+        if (filter === "profile_reminder") {
+          return notification.type === "profile_reminder";
+        }
+        return false;
       })
     : [];
 
@@ -93,27 +106,21 @@ export default function CounselorNotificationsPage() {
       <div className="bg-white rounded-xl shadow-sm mb-6">
         <div className="p-4 flex space-x-2">
           {[
-            "all",
-            "booking_created",
-            "booking_confirmed",
-            "booking_cancelled",
-            "message_received",
-            "system_notification",
-            "profile_reminder",
-          ].map((filterType) => (
+            { key: "all", label: "All" },
+            { key: "profile_reminder", label: "Profile Reminder" },
+            { key: "bookings", label: "Bookings" },
+            { key: "messages", label: "Messages" },
+          ].map((filterOption) => (
             <button
-              key={filterType}
-              onClick={() => setFilter(filterType)}
+              key={filterOption.key}
+              onClick={() => setFilter(filterOption.key)}
               className={`px-4 py-2 rounded-full text-sm font-medium ${
-                filter === filterType
+                filter === filterOption.key
                   ? "bg-blue-500 text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              {filterType
-                .split("_")
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")}
+              {filterOption.label}
             </button>
           ))}
         </div>
