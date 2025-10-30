@@ -8,6 +8,7 @@ export default function MultiHourDurationSelector({
   selectedHours,
   onHoursChange,
   onPriceUpdate,
+  showBreakdown = true,
 }) {
   const [hours, setHours] = useState(selectedHours || plan.minHours || 2);
 
@@ -17,8 +18,20 @@ export default function MultiHourDurationSelector({
     }
   }, [selectedHours, plan.minHours]);
 
+  // Emit initial pricing on mount and when hours change source-of-truth updates
+  useEffect(() => {
+    const pricing = calculatePrice(hours);
+    onPriceUpdate && onPriceUpdate(pricing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hours, plan.price, plan.hourlyRate, plan.sessionCount]);
+
   const calculatePrice = (hoursCount) => {
-    const basePrice = plan.price * hoursCount;
+    const unitPrice =
+      Number(plan.hourlyRate) ||
+      (plan.type === "multi_hour" && Number(plan.sessionCount)
+        ? Number(plan.price) / Number(plan.sessionCount)
+        : Number(plan.price));
+    const basePrice = unitPrice * hoursCount;
     let discountPercentage = 0;
 
     if (hoursCount >= 11) {
@@ -33,6 +46,7 @@ export default function MultiHourDurationSelector({
     const finalPrice = basePrice - discount;
 
     return {
+      unitPrice,
       basePrice,
       discount,
       discountPercentage,
@@ -79,9 +93,10 @@ export default function MultiHourDurationSelector({
       </div>
 
       {/* Pricing Breakdown */}
+      {showBreakdown && (
       <div className="bg-gray-50 rounded-lg p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">Base Price ({hours} hours × ${plan.price})</span>
+          <span className="text-sm text-gray-600">Base Price ({hours} hours × ${pricing.unitPrice.toFixed(2)})</span>
           <span className="text-sm font-medium">${pricing.basePrice.toFixed(2)}</span>
         </div>
         
@@ -105,20 +120,23 @@ export default function MultiHourDurationSelector({
           </div>
         </div>
       </div>
+      )}
 
       {/* Package Info */}
-      <div className="text-xs text-gray-500">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center">
-            <ClockIcon className="h-4 w-4 mr-1" />
-            <span>{hours} hour{hours > 1 ? 's' : ''}</span>
-          </div>
-          <div className="flex items-center">
-            <CurrencyDollarIcon className="h-4 w-4 mr-1" />
-            <span>${(pricing.finalPrice / hours).toFixed(2)}/hour</span>
+      {showBreakdown && (
+        <div className="text-xs text-gray-500">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center">
+              <ClockIcon className="h-4 w-4 mr-1" />
+              <span>{hours} hour{hours > 1 ? 's' : ''}</span>
+            </div>
+            <div className="flex items-center">
+              <CurrencyDollarIcon className="h-4 w-4 mr-1" />
+              <span>${(pricing.finalPrice / hours).toFixed(2)}/hour</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

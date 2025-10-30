@@ -68,6 +68,15 @@ class DashboardService {
       duration:
         session.duration ||
         this.calculateDuration(session.startTime, session.endTime),
+      profileImageUrl:
+        session.profileImageUrl ||
+        session.providerImage ||
+        session.studentImage ||
+        session.avatar ||
+        (session.provider && (session.provider.profileImageUrl || session.provider.avatar || session.provider.imageUrl)) ||
+        (session.tutor && (session.tutor.profileImageUrl || session.tutor.avatar || session.tutor.imageUrl)) ||
+        (session.student && (session.student.profileImageUrl || session.student.avatar || session.student.imageUrl)) ||
+        null,
     };
   }
 

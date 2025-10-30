@@ -179,69 +179,51 @@ export const zoomService = {
       const cleanBookingId = bookingId.replace(/^(tutor-|student-|counselor-)/, "");
       console.log(`Original booking ID: ${bookingId}, Cleaned: ${cleanBookingId}`);
 
-      if (userRole === "counselor") {
-        // For counselors, use the counselor booking endpoint
-        const bookingResponse = await apiClient.get(
-          `/counselor-bookings/sessions/${cleanBookingId}`
-        );
+      // Use the regular booking endpoint for both tutors and counselors
+      // The backend will handle authorization based on user role
+      console.log(`Fetching booking ${cleanBookingId} for user role: ${userRole}`);
+      const bookingResponse = await apiClient.get(
+        `/bookings/${cleanBookingId}`
+      );
+      console.log("Booking response:", bookingResponse);
 
-        if (bookingResponse && bookingResponse.success && bookingResponse.data) {
-          const booking = bookingResponse.data;
+      if (bookingResponse && bookingResponse.success && bookingResponse.data) {
+        const booking = bookingResponse.data;
+        console.log("Booking data:", booking);
 
-          // Check if booking has zoom meeting info
-          if (booking.zoomMeeting) {
-            return booking.zoomMeeting;
-          }
+        // Check if booking has zoom meeting info
+        if (booking.zoomMeeting) {
+          return booking.zoomMeeting;
+        }
 
-          // Check if booking has meeting link
-          if (booking.meetingLink && booking.meetingLink !== "#") {
-            return {
-              joinUrl: booking.meetingLink,
-              startUrl: booking.meetingLink,
-              id: booking.zoomMeetingId || "unknown",
-              status: "scheduled",
-            };
-          }
+        // Check if booking has meeting link
+        if (booking.meetingLink && booking.meetingLink !== "#") {
+          console.log("Found meeting link:", booking.meetingLink);
+          return {
+            joinUrl: booking.meetingLink,
+            startUrl: booking.meetingLink,
+            id: booking.zoomMeetingId || "unknown",
+            status: "scheduled",
+          };
+        } else {
+          console.log("No meeting link found in booking");
         }
       } else {
-        // For tutors and students, use the regular booking endpoint
-        // The backend will handle authorization based on user role
-        console.log(`Fetching booking ${cleanBookingId} for user role: ${userRole}`);
-        const bookingResponse = await apiClient.get(
-          `/bookings/${cleanBookingId}`
-        );
-        console.log("Booking response:", bookingResponse);
-
-        if (bookingResponse && bookingResponse.success && bookingResponse.data) {
-          const booking = bookingResponse.data;
-          console.log("Booking data:", booking);
-
-          // Check if booking has meeting link
-          if (booking.meetingLink && booking.meetingLink !== "#") {
-            console.log("Found meeting link:", booking.meetingLink);
-            return {
-              joinUrl: booking.meetingLink,
-              startUrl: booking.meetingLink,
-              id: booking.zoomMeetingId || "unknown",
-              status: "scheduled",
-            };
-          } else {
-            console.log("No meeting link found in booking");
-          }
-        } else {
-          console.log("No booking data found or unsuccessful response");
-        }
+        console.log("No booking data found or unsuccessful response");
       }
 
       return null;
     } catch (error) {
-      // Improve error visibility
+      // Log error but don't throw - gracefully return null
       const message =
         error?.response?.data?.message || error?.message || "Unknown error";
       console.error("Error fetching meeting by booking ID:", {
         message,
         status: error?.response?.status,
+        error: error.message || error,
       });
+      
+      // Return null instead of throwing to prevent breaking the UI
       return null;
     }
   },

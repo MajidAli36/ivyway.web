@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import SessionCard from "./components/SessionCard";
-import SessionFilter from "./components/SessionFilter";
+// Inlined SessionCard component below; removed separate import
+// Removed SessionFilter import
 import {
   PlusIcon,
-  ArrowPathIcon,
+  // ArrowPathIcon,
   BookOpenIcon,
   CalendarIcon,
   CheckCircleIcon,
@@ -14,19 +14,197 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import Image from "next/image";
+import SessionButton from "@/app/components/SessionButton";
 import { authService } from "@/app/lib/auth/authService";
 import { apiGet, apiPost } from "../utils/api";
 import { counselorBookings } from "@/app/lib/api/endpoints";
+import { getAllSubjects } from "@/app/constants/enhancedSubjects";
 import { safeApiCall, ensureArray } from "@/app/utils/apiResponseHandler";
 import sessionService from "@/app/lib/api/sessionService";
 import toast, { Toaster } from "react-hot-toast";
 // Removed unused SessionButton import
+
+// ---------------- Inlined SessionCard ----------------
+const statusStyles = {
+  pending: { bg: "bg-blue-100", text: "text-blue-800", icon: ClockIcon, label: "Pending" },
+  completed: { bg: "bg-emerald-100", text: "text-emerald-800", icon: CheckCircleIcon, label: "Completed" },
+  canceled: { bg: "bg-rose-100", text: "text-rose-800", icon: XCircleIcon, label: "Canceled" },
+  scheduled: { bg: "bg-indigo-100", text: "text-indigo-800", icon: CalendarIcon, label: "Scheduled" },
+  confirmed: { bg: "bg-green-100", text: "text-green-800", icon: CheckCircleIcon, label: "Confirmed" },
+};
+
+function SessionCard({ session, onCancelRequest }) {
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [formattedDate, setFormattedDate] = useState("");
+  const [isUpcoming, setIsUpcoming] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => { setIsClient(true); }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+    const sessionDate = new Date(session.date);
+    const now = new Date();
+    const timeUntilSession = sessionDate - now;
+    setIsUpcoming(timeUntilSession > 0 && timeUntilSession < 1000 * 60 * 60 * 24);
+    setFormattedDate(sessionDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }));
+  }, [session.date, isClient]);
+
+  const statusConfig = statusStyles[session.status] || statusStyles.pending;
+  const handleCancelRequest = () => setShowCancelModal(true);
+  const cancelCancel = () => setShowCancelModal(false);
+  const confirmCancel = async () => {
+    setIsCancelling(true); setShowCancelModal(false);
+    try { await onCancelRequest(session.id); } finally { setIsCancelling(false); }
+  };
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border transition-all overflow-hidden ${session.status === "canceled" ? "border-red-200 ring-1 ring-red-100 bg-red-50/30" : isUpcoming ? "border-blue-200 ring-1 ring-blue-100" : "border-gray-100"}`}>
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start space-x-3 flex-1">
+            <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center">
+              {session.provider?.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={session.provider.avatar}
+                  alt={(session.provider?.name || "Provider") + " avatar"}
+                  className="h-12 w-12 object-cover rounded-full"
+                  onError={(e) => {
+                    // hide broken image and show fallback gradient
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className={`${session.provider?.avatar ? 'hidden' : 'flex'} h-12 w-12 items-center justify-center text-white rounded-full ${session.serviceType === "counseling" ? "bg-gradient-to-br from-purple-500 to-purple-600" : "bg-gradient-to-br from-blue-500 to-blue-600"}`}
+              >
+                <span className="text-xl font-semibold">{session.serviceType === "counseling" ? "C" : "T"}</span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-2 mb-1">
+                <h3 className={`text-lg font-semibold ${session.status === "canceled" ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                  {session.subject?.name || (session.serviceType === "counseling" ? "Academic Counseling" : "Tutoring Session")}
+                </h3>
+                {session.status === "canceled" && (
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
+                    <statusConfig.icon className="h-3 w-3 mr-1" />
+                    {statusConfig.label}
+                  </span>
+                )}
+              </div>
+              <p className={`text-sm ${session.status === "canceled" ? "text-gray-400 line-through" : "text-gray-600"}`}>
+                with {session.provider?.name || "Provider"} • {session.serviceType === "counseling" ? "Counselor" : "Tutor"}
+              </p>
+              {session.planName && (
+                <div className="mt-1">
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${session.planName.includes("Advanced") ? "bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 border border-purple-200" : "bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 border border-blue-200"}`}>
+                    {session.planName.includes("Advanced") ? "⭐ " : "📚 "}
+                    {session.planName}
+                  </span>
+                </div>
+              )}
+              <p className="text-sm text-gray-500 mt-1">{session.notes || "No notes provided"}</p>
+            </div>
+          </div>
+          {sessionService.canCancelSession(session) && session.serviceType !== "counseling" && (
+            <div className="flex-shrink-0 ml-4">
+              {(() => {
+                const start = new Date(session.date + ' ' + session.startTime);
+                const now = new Date();
+                const isTutorWithin24h = (start - now) / (1000 * 60 * 60) < 24;
+                const disableCancel = isCancelling || (session.serviceType === 'tutoring' && isTutorWithin24h);
+                return (
+                  <button onClick={(e) => { e.stopPropagation(); handleCancelRequest(); }} disabled={disableCancel} className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50 shadow-sm">
+                    <XCircleIcon className="h-4 w-4 mr-1.5 text-red-500" />
+                    {isCancelling ? "Cancelling..." : "Cancel"}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="px-4 pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
+              <statusConfig.icon className="h-3 w-3 mr-1" />
+              {statusConfig.label}
+            </span>
+          </div>
+          <div className="text-sm text-gray-500 flex space-x-2">
+            <span>{formattedDate || "Loading..."}</span>
+            <span>{session.startTime} - {session.endTime}</span>
+          </div>
+        </div>
+        {(session.status === 'confirmed' || session.status === 'accepted') && (
+          <div className="flex justify-end">
+            <SessionButton session={session} userRole="student" />
+          </div>
+        )}
+      </div>
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) { cancelCancel(); } }}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <XCircleIcon className="w-6 h-6 text-red-600" />
+                </div>
+                <div className="ml-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Cancel Session</h3>
+                  <p className="text-sm text-gray-500">This action cannot be undone</p>
+                </div>
+              </div>
+              <div className="mb-6">
+                <p className="text-gray-700 mb-4">Are you sure you want to cancel this session?</p>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center space-x-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-sm font-semibold ${session.serviceType === "counseling" ? "bg-gradient-to-br from-purple-500 to-purple-600" : "bg-gradient-to-br from-blue-500 to-blue-600"}`}>
+                      {session.serviceType === "counseling" ? "C" : "T"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{session.subject?.name || (session.serviceType === "counseling" ? "Academic Counseling" : "Tutoring Session")}</p>
+                      <p className="text-xs text-gray-500">with {session.provider?.name || "Provider"} • {formattedDate} at {session.startTime}</p>
+                    </div>
+                  </div>
+                </div>
+                {session.serviceType === 'tutoring' && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                      </div>
+                      <div className="ml-3"><p className="text-sm text-yellow-800"><strong>Note:</strong> Tutor sessions can only be cancelled 24 hours in advance.</p></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelCancel(); }} className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Keep Session</button>
+                <button onClick={confirmCancel} disabled={isCancelling} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">{isCancelling ? (<div className="flex items-center justify-center"><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Cancelling...</div>) : ('Yes, Cancel Session')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+// -------------- End Inlined SessionCard --------------
 
 function StudentSessions() {
   const [sessions, setSessions] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("all"); // kept for now but tabs removed
   const [searchQuery, setSearchQuery] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   // Removed SessionDetails modal state
@@ -98,23 +276,13 @@ function StudentSessions() {
           );
 
           if (counselorResult.success && counselorResult.data) {
-            const counselorSessions = counselorResult.data.map((s) => ({
+            const counselorSessions = counselorResult.data
+              .filter((s) => !!s.startTime)
+              .map((s) => ({
               id: `counselor-${s.id}`,
-              date: s.startTime
-                ? s.startTime.split("T")[0]
-                : new Date().toISOString().split("T")[0],
-              startTime: s.startTime
-                ? new Date(s.startTime).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "10:00",
-              endTime: s.endTime
-                ? new Date(s.endTime).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "11:00",
+              date: s.startTime.split("T")[0],
+              startTime: new Date(s.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              endTime: s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
               duration: s.duration || 60,
               status: normalizeStatus(s.status || "pending"),
               sessionType: s.sessionType || "virtual",
@@ -124,6 +292,7 @@ function StudentSessions() {
                 name: s.counselorName || s.counselor?.name || "Counselor",
                 specialization: "Academic Counselor",
                 type: "counselor",
+                avatar: s.counselorAvatar || s.counselor?.avatar || s.counselor?.profileImage || null,
               },
               serviceType: "counseling",
               meetingLink:
@@ -146,27 +315,15 @@ function StudentSessions() {
 
           if (tutorResult && tutorResult.data) {
             // Filter out counselor bookings to prevent duplicates
-            const tutorBookings = tutorResult.data.filter(s => 
-              s.providerRole !== "counselor" && s.serviceType !== "counseling"
-            );
+            const tutorBookings = tutorResult.data
+              .filter(s => s.providerRole !== "counselor" && s.serviceType !== "counseling")
+              .filter(s => !!s.startTime);
             
             const tutorSessions = tutorBookings.map((s) => ({
               id: `tutor-${s.id}`,
-              date: s.startTime
-                ? s.startTime.split("T")[0]
-                : new Date().toISOString().split("T")[0],
-              startTime: s.startTime
-                ? new Date(s.startTime).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "14:00",
-              endTime: s.endTime
-                ? new Date(s.endTime).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "15:00",
+              date: s.startTime.split("T")[0],
+              startTime: new Date(s.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              endTime: s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
               duration:
                 s.duration ||
                 Math.round(
@@ -179,9 +336,17 @@ function StudentSessions() {
               notes: s.notes || "",
               subject: { name: s.subject || s.providerRole || "Mathematics" },
               provider: {
-                name: s.providerName || "Tutor",
+                name: s.providerName || s.provider?.fullName || "Tutor",
                 specialization: s.providerRole || "Math Tutor",
                 type: "tutor",
+                avatar:
+                  s.provider?.profileImageUrl ||
+                  s.provider?.avatar ||
+                  s.providerAvatar ||
+                  s.tutorAvatar ||
+                  s.providerImage ||
+                  s.avatar ||
+                  null,
               },
               serviceType: "tutoring",
               meetingLink:
@@ -274,15 +439,10 @@ function StudentSessions() {
     []
   );
 
-  // Initial load & polling
+  // Initial load (no polling)
   useEffect(() => {
     if (isAuthenticated) {
       fetchSessions(statusFilter, serviceTypeFilter);
-      const iv = setInterval(
-        () => fetchSessions(statusFilter, serviceTypeFilter),
-        30000
-      );
-      return () => clearInterval(iv);
     }
   }, [fetchSessions, statusFilter, serviceTypeFilter, isAuthenticated]);
 
@@ -438,7 +598,11 @@ function StudentSessions() {
           .toLowerCase()
           .includes(searchQuery.toLowerCase())
       : true;
-    return matchesStatus && matchesSearch;
+    // subject filter from dropdown (matches parent subject name)
+    const matchesSubject = subjectFilter
+      ? (session.subject?.name || "").toLowerCase().includes(subjectFilter.toLowerCase())
+      : true;
+    return matchesStatus && matchesSearch && matchesSubject;
   });
 
   // Pagination calculations
@@ -471,12 +635,6 @@ function StudentSessions() {
           </p>
         </div>
         <div className="flex space-x-2">
-          <button
-            onClick={() => fetchSessions(statusFilter, serviceTypeFilter)}
-            className="px-3 py-2 bg-white border rounded hover:bg-gray-100"
-          >
-            <ArrowPathIcon className="h-5 w-5 text-gray-600" />
-          </button>
           <Link
             href="/student/book-session"
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -510,15 +668,45 @@ function StudentSessions() {
           ))}
         </div>
 
-        {/* Filter */}
-        <SessionFilter
-          onFilterChange={onFilterChange}
-          totalSessions={sessionStats.total}
-          pendingCount={sessionStats.pending}
-          confirmedCount={sessionStats.confirmed}
-          completedCount={sessionStats.completed}
-          canceledCount={sessionStats.canceled}
-        />
+        {/* Search + Status + Subject Dropdown */}
+        <div className="bg-white p-4 rounded-lg shadow flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="w-full sm:max-w-xl md:max-w-2xl flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by tutor or subject..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="statusFilter" className="text-sm text-gray-600">Status</label>
+            <select
+              id="statusFilter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="canceled">Canceled</option>
+            </select>
+            <label htmlFor="subjectFilter" className="text-sm text-gray-600 ml-2">Subject</label>
+            <select
+              id="subjectFilter"
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Subjects</option>
+              {getAllSubjects().map((subj) => (
+                <option key={subj} value={subj}>{subj}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {/* List */}
         {isLoading ? (

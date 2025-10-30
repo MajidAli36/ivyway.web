@@ -289,7 +289,7 @@ const PaymentFormContent = ({
           <button
             type="submit"
             disabled={!stripe || isProcessing}
-            className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-lg font-medium shadow-sm hover:from-blue-700 hover:to-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg font-medium shadow-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             {isProcessing ? (
               <div className="flex items-center justify-center">

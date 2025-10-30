@@ -24,8 +24,9 @@ const steps = [
   { id: "subject", name: "Subject" },
   { id: "provider", name: "Provider" },
   { id: "datetime", name: "Date & Time" },
-  { id: "details", name: "Session Details" },
+  { id: "details", name: "Details" },
   { id: "confirm", name: "Confirm" },
+  { id: "payment", name: "Payment" },
 ];
 
 export default function BookingWizard({ onComplete }) {
@@ -60,7 +61,6 @@ export default function BookingWizard({ onComplete }) {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
   const [paymentAmountInCents, setPaymentAmountInCents] = useState(0);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -360,15 +360,21 @@ export default function BookingWizard({ onComplete }) {
       currentPlan.id && typeof currentPlan.id === "string" && !currentPlan.id.includes("-");
 
     let sessionPriceInCents;
-    if (currentPlan.type === "single") {
-      const basePricePerHour = currentPlan.price;
-      const durationInHours = bookingData.duration / 60;
+    const planType = (currentPlan.type || currentPlan.planType || '').toString().toLowerCase();
+    if (planType === "single") {
+      const basePricePerHour = Number(currentPlan.price) || 0;
+      const durationInHours = (Number(bookingData.duration) || 60) / 60;
       const calculatedPrice = basePricePerHour * durationInHours;
       sessionPriceInCents = Math.round(calculatedPrice * 100);
-    } else if (currentPlan.type === "multi_hour") {
-      sessionPriceInCents = Math.round(currentPlan.calculatedPrice * 100);
+    } else if (planType === "multi_hour") {
+      const finalPrice = Number(currentPlan.calculatedPrice);
+      sessionPriceInCents = Math.round((isNaN(finalPrice) ? 0 : finalPrice) * 100);
+    } else if (planType === "monthly") {
+      const finalPrice = Number(currentPlan.calculatedPrice ?? currentPlan.price);
+      sessionPriceInCents = Math.round((isNaN(finalPrice) ? 0 : finalPrice) * 100);
     } else {
-      sessionPriceInCents = Math.round(currentPlan.calculatedPrice * 100);
+      const fallback = Number(currentPlan.calculatedPrice ?? currentPlan.price) || 0;
+      sessionPriceInCents = Math.round(fallback * 100);
     }
 
     console.log(`Final amountInCents sent to backend: ${sessionPriceInCents}`);
@@ -408,9 +414,10 @@ export default function BookingWizard({ onComplete }) {
       
       // Check if payment is required
       if (response.status === 402 || !booking.isPaid) {
-        // Payment is required - show payment modal
+        // Move to payment step instead of opening modal
         setCreatedBooking(booking);
-        setShowPaymentModal(true);
+        setCurrentStep(7); // payment step
+        window.scrollTo(0, 0);
         return;
       }
       
@@ -419,7 +426,21 @@ export default function BookingWizard({ onComplete }) {
       if (booking.bookingId) {
         // Open inline payment modal instead of navigating
         setCreatedBooking(booking);
-        setShowPaymentModal(true);
+        setShowSuccessPopup(true);
+        setSuccessCountdown(5);
+        const interval = setInterval(() => {
+          setSuccessCountdown((s) => {
+            if (s <= 1) {
+              clearInterval(interval);
+              // Use setTimeout to avoid calling router.push during render
+              setTimeout(() => {
+                router.push('/student/my-sessions');
+              }, 0);
+              return 0;
+            }
+            return s - 1;
+          });
+        }, 1000);
       } else {
         setError("Booking failed: No bookingId returned from backend.");
       }
@@ -473,7 +494,6 @@ export default function BookingWizard({ onComplete }) {
       // Payment required (402)
       if (String(status) === "402") {
         const bookingDetails = err?.response?.data?.bookingData || bookingPayload;
-        // Show payment modal with booking details
         const tempBooking = {
           ...bookingDetails,
           bookingId: `temp-${Date.now()}`,
@@ -482,7 +502,9 @@ export default function BookingWizard({ onComplete }) {
           paymentAmount: sessionPriceInCents
         };
         setCreatedBooking(tempBooking);
-        setShowPaymentModal(true);
+        setPaymentAmountInCents(sessionPriceInCents);
+        setCurrentStep(7);
+        window.scrollTo(0, 0);
         return;
       }
 
@@ -594,17 +616,51 @@ export default function BookingWizard({ onComplete }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-            {planList.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                isSelected={selectedPlan?.id === plan.id}
-                onSelect={setSelectedPlan}
-                disableHourSelection={selectedService === ServiceTypes.TEST_PREP}
-                fixedHoursLabel={"10 sessions"}
-              />
-            ))}
+          <div
+            className={`grid grid-cols-1 md:grid-cols-2 ${
+              selectedService === ServiceTypes.IWGSP ? 'lg:grid-cols-2' : 'lg:grid-cols-2'
+            } gap-6 mt-6`}
+          >
+            {selectedService === ServiceTypes.IWGSP && planList.length >= 3 ? (
+              <>
+                {/* Row 1: two cards */}
+                <PlanCard
+                  key={planList[0].id}
+                  plan={planList[0]}
+                  isSelected={selectedPlan?.id === planList[0].id}
+                  onSelect={setSelectedPlan}
+                />
+                <PlanCard
+                  key={planList[2].id}
+                  plan={planList[2]}
+                  isSelected={selectedPlan?.id === planList[2].id}
+                  onSelect={setSelectedPlan}
+                />
+                {/* Row 2: centered hours-selection card spanning two columns */}
+                <div className="md:col-span-2 flex justify-center">
+                  <div className="w-full max-w-xl">
+                    <PlanCard
+                      key={`${planList[1].id}-hours`}
+                      plan={{ ...planList[1] }}
+                      isSelected={selectedPlan?.id === planList[1].id}
+                      onSelect={setSelectedPlan}
+                      disableHourSelection={false}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              planList.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  isSelected={selectedPlan?.id === plan.id}
+                  onSelect={setSelectedPlan}
+                  disableHourSelection={selectedService === ServiceTypes.TEST_PREP}
+                  fixedHoursLabel={"10 sessions"}
+                />
+              ))
+            )}
           </div>
         )}
       </div>
@@ -775,26 +831,7 @@ export default function BookingWizard({ onComplete }) {
                         >
                           {step.name}
                         </div>
-
-                        {/* Show selected service for step 0 */}
-                        {stepIdx === 0 && selectedService && (
-                          <div className="text-sm text-blue-500 font-medium mt-1">
-                            {selectedService === ServiceTypes.COUNSELING
-                              ? "Counseling"
-                              : selectedService === ServiceTypes.TEST_PREP
-                              ? "Test Prep"
-                              : selectedService === ServiceTypes.IWGSP
-                              ? "IWGSP"
-                              : "Tutoring"}
-                          </div>
-                        )}
-
-                        {/* Show selected plan name for step 1 */}
-                        {stepIdx === 1 && selectedPlan && (
-                          <div className="text-sm text-blue-500 font-medium mt-1">
-                            {selectedPlan.name}
-                          </div>
-                        )}
+                        
                       </div>
                     </div>
                   ))}
@@ -861,18 +898,7 @@ export default function BookingWizard({ onComplete }) {
                           >
                             {step.name}
                           </div>
-                          {stepIdx === 0 && selectedService && (
-                            <div className="text-[10px] text-blue-500 font-medium">
-                              {selectedService === ServiceTypes.COUNSELING ? "Counseling" : "Tutoring"}
-                            </div>
-                          )}
-                          {stepIdx === 1 && selectedPlan && (
-                            <div className="text-[10px] text-blue-500 font-medium truncate">
-                              {selectedPlan.name.length > 12 
-                                ? selectedPlan.name.substring(0, 12) + '...'
-                                : selectedPlan.name}
-                            </div>
-                          )}
+                          
                         </div>
                       </div>
                     ))}
@@ -951,28 +977,7 @@ export default function BookingWizard({ onComplete }) {
                           >
                             {step.name}
                           </div>
-
-                          {/* Show selected service for step 0 */}
-                          {stepIdx === 0 && selectedService && (
-                            <div className="text-xs text-blue-500 font-medium text-center">
-                              {selectedService === ServiceTypes.COUNSELING
-                                ? "Counseling"
-                                : selectedService === ServiceTypes.TEST_PREP
-                                ? "Test Prep"
-                                : selectedService === ServiceTypes.IWGSP
-                                ? "IWGSP"
-                                : "Tutoring"}
-                            </div>
-                          )}
-
-                          {/* Show selected plan name for step 1 */}
-                          {stepIdx === 1 && selectedPlan && (
-                            <div className="text-xs text-blue-500 font-medium text-center leading-tight">
-                              {selectedPlan.name.length > 15 
-                                ? selectedPlan.name.substring(0, 15) + '...'
-                                : selectedPlan.name}
-                            </div>
-                          )}
+                          
                         </div>
                       </div>
                     ))}
@@ -1195,10 +1200,64 @@ export default function BookingWizard({ onComplete }) {
                 }
               />
             )}
+            {currentStep === 7 && (
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">Payment</h2>
+                <PaymentForm
+                  bookingId={createdBooking?.bookingId}
+                  amount={paymentAmountInCents}
+                  currency={createdBooking?.currency || "usd"}
+                  booking={{
+                    ...createdBooking,
+                    tutor: { name: bookingData.providerName },
+                    subject: bookingData.subject,
+                    duration: bookingData.duration,
+                    startTime: bookingData.startTimeISO,
+                  }}
+                  onSuccess={() => {
+                    // Persist recently booked slot
+                    try {
+                      const raw = localStorage.getItem('recentlyBookedSlots');
+                      const list = raw ? JSON.parse(raw) : [];
+                      list.push({
+                        tutorId: bookingData.providerId,
+                        date: (bookingData.startTimeISO ? new Date(bookingData.startTimeISO) : new Date()).toISOString().slice(0,10),
+                        value: bookingData.startTimeISO ? new Date(bookingData.startTimeISO).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : null
+                      });
+                      localStorage.setItem('recentlyBookedSlots', JSON.stringify(list.filter(Boolean)));
+                    } catch (e) {}
+                    // Show confirmation popup then navigate
+                    setShowSuccessPopup(true);
+                    setSuccessCountdown(5);
+                    const interval = setInterval(() => {
+                      setSuccessCountdown((s) => {
+                        if (s <= 1) {
+                          clearInterval(interval);
+                          setTimeout(() => {
+                            router.push('/student/my-sessions');
+                          }, 0);
+                          return 0;
+                        }
+                        return s - 1;
+                      });
+                    }, 1000);
+                  }}
+                  onError={(e) => {
+                    console.error(e);
+                  }}
+                  onCancel={() => {
+                    // Return to confirm step
+                    setCurrentStep(6);
+                    window.scrollTo(0, 0);
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Navigation Buttons */}
+        {/* Navigation Buttons (hidden on payment step) */}
+        {currentStep !== 7 && (
         <div className="mb-6 sm:mb-8">
           <div className="bg-white shadow-lg rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100">
             <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4">
@@ -1217,7 +1276,7 @@ export default function BookingWizard({ onComplete }) {
               <button
                 type="button"
                 onClick={
-                  currentStep === steps.length - 1 ? handleSubmit : handleNext
+                  currentStep === steps.length - 2 ? handleSubmit : handleNext
                 }
                 disabled={
                   (currentStep === 0 && !selectedService) ||
@@ -1241,8 +1300,8 @@ export default function BookingWizard({ onComplete }) {
                   (currentStep === 4 && !bookingData.startTimeISO) ||
                   loading
                     ? "bg-blue-300 cursor-not-allowed"
-                    : currentStep === steps.length - 1
-                    ? "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg cursor-pointer"
+                    : currentStep === steps.length - 2
+                    ? "bg-green-600 hover:bg-green-700 shadow-lg cursor-pointer"
                     : "bg-blue-600 hover:bg-blue-700 shadow-lg cursor-pointer"
                 }`}
               >
@@ -1253,7 +1312,7 @@ export default function BookingWizard({ onComplete }) {
                   </div>
                 ) : currentStep === 0 ? (
                   "Select Plan"
-                ) : currentStep === steps.length - 1 ? (
+                ) : currentStep === steps.length - 2 ? (
                   "Confirm Booking"
                 ) : (
                   "Continue"
@@ -1262,113 +1321,9 @@ export default function BookingWizard({ onComplete }) {
             </div>
           </div>
         </div>
+        )}
       </div>
-    {/* Payment Modal */}
-    {showPaymentModal && createdBooking && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="w-full max-w-2xl bg-white rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 relative max-h-[90vh] overflow-y-auto">
-          <button
-            type="button"
-            onClick={() => setShowPaymentModal(false)}
-            className="absolute top-2 right-2 sm:top-3 sm:right-3 text-gray-500 hover:text-gray-700 z-10"
-            aria-label="Close"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 sm:w-6 sm:h-6">
-              <path fillRule="evenodd" d="M10 8.586l4.95-4.95a1 1 0 111.414 1.415L11.414 10l4.95 4.95a1 1 0 01-1.414 1.414L10 11.414l-4.95 4.95a1 1 0 01-1.414-1.414L8.586 10l-4.95-4.95A1 1 0 115.05 3.636L10 8.586z" clipRule="evenodd" />
-            </svg>
-          </button>
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 pr-8">Complete Your Payment</h3>
-          <PaymentForm
-            bookingId={createdBooking.bookingId}
-            amount={paymentAmountInCents || 0}
-            currency={createdBooking.currency || "usd"}
-            booking={{
-              ...createdBooking,
-              providerName: bookingData.providerName,
-              subject: bookingData.subject,
-              duration: bookingData.duration,
-              startTime: bookingData.startTimeISO,
-            }}
-            onSuccess={() => {
-              setShowPaymentModal(false);
-              // Persist this slot as recently booked only after successful payment
-              try {
-                const raw = localStorage.getItem('recentlyBookedSlots');
-                const list = raw ? JSON.parse(raw) : [];
-                list.push({
-                  tutorId: bookingData.providerId,
-                  date: (bookingData.startTimeISO ? new Date(bookingData.startTimeISO) : new Date()).toISOString().slice(0,10),
-                  value: bookingData.startTimeISO ? new Date(bookingData.startTimeISO).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : null
-                });
-                localStorage.setItem('recentlyBookedSlots', JSON.stringify(list.filter(Boolean)));
-              } catch (e) {}
-              setShowSuccessPopup(true);
-              setSuccessCountdown(5);
-              const interval = setInterval(() => {
-                setSuccessCountdown((s) => {
-                  if (s <= 1) {
-                    clearInterval(interval);
-                    // Use setTimeout to avoid calling router.push during render
-                    setTimeout(() => {
-                      router.push('/student/my-sessions');
-                    }, 0);
-                    return 0;
-                  }
-                  return s - 1;
-                });
-              }, 1000);
-            }}
-            onError={(e) => {
-              console.error(e);
-            }}
-            onCancel={async () => {
-              // Cancel the unpaid booking on modal close
-              try {
-                if (createdBooking?.bookingId) {
-                  await apiClient.put(`/bookings/${createdBooking.bookingId}/cancel`, {
-                    cancellationReason: 'Payment canceled by user',
-                  });
-                }
-              } catch (e) {
-                console.warn('Failed to cancel unpaid booking', e);
-              } finally {
-                setShowPaymentModal(false);
-                setCreatedBooking(null);
-              }
-            }}
-          />
-        </div>
-      </div>
-    )}
-
-    {/* Success Popup */}
-    {showSuccessPopup && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="w-full max-w-md bg-white rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 text-center">
-          <div className="mx-auto mb-3 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-green-100 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6 sm:w-7 sm:h-7 text-green-600"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.25 7.25a1 1 0 01-1.42 0l-3-3a1 1 0 011.42-1.42l2.29 2.29 6.54-6.54a1 1 0 011.42 0z" clipRule="evenodd"/></svg>
-          </div>
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Payment successful</h3>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">Redirecting to your sessions in {successCountdown}s</p>
-          <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
-            <button
-              type="button"
-              className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 text-white text-xs sm:text-sm font-medium hover:bg-blue-700 cursor-pointer"
-              onClick={() => router.push('/student/book-session')}
-            >
-              Book another session
-            </button>
-            <button
-              type="button"
-              className="w-full sm:w-auto px-4 py-2 rounded-lg border border-gray-200 text-gray-700 text-xs sm:text-sm font-medium hover:bg-gray-50 cursor-pointer"
-              onClick={() => router.push('/student/my-sessions')}
-            >
-              View sessions
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {/* Removed Payment Modal in favor of inline step */}
     </div>
   );
 }

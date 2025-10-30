@@ -196,11 +196,26 @@ function RequestCard({ request, onAccept, onReject }) {
       <div className="p-6">
         <div className="flex justify-between items-start">
           <div className="flex items-start">
-            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-center text-white font-semibold">
-              {request.studentName
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
+            <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden flex items-center justify-center">
+              {request.student?.profileImageUrl || request.studentAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={request.student?.profileImageUrl || request.studentAvatar}
+                  alt={(request.studentName || "Student") + " avatar"}
+                  className="h-10 w-10 object-cover rounded-full"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className={`${(request.student?.profileImageUrl || request.studentAvatar) ? 'hidden' : 'flex'} h-10 w-10 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 items-center justify-center text-white font-semibold`}>
+                {(request.studentName || 'S')
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")}
+              </div>
             </div>
             <div className="ml-4">
               <div className="text-sm font-medium text-[#334e68]">

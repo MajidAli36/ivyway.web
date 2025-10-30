@@ -1,534 +1,297 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  UserGroupIcon,
   CalendarIcon,
+  UserGroupIcon,
   ClockIcon,
-  CheckCircleIcon,
-  ChatBubbleLeftRightIcon,
-  ExclamationTriangleIcon,
-  ArrowRightIcon,
   CurrencyDollarIcon,
-  StarIcon,
+  AcademicCapIcon,
+  DocumentTextIcon,
+  ChatBubbleLeftIcon,
+  ArrowTrendingUpIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  BellIcon,
 } from "@heroicons/react/24/outline";
+import { useCounselorDashboard } from "../../hooks/useDashboard";
+import OverviewCards from "../../components/dashboard/OverviewCards";
 import {
-  counselorBookings,
-  counselorAvailability,
-  notifications as notificationsAPI,
-} from "../../lib/api/endpoints";
-import { safeApiCall, ensureArray } from "../../utils/apiResponseHandler";
-import authService from "../../lib/auth/authService";
-import { zoomService } from "../../lib/api/zoomService";
-import MeetingCard from "../../components/meetings/MeetingCard";
-import ReactAIWidget from "@/app/components/ai-chat/ReactAIWidget";
+  CounselorSessions,
+} from "../../components/dashboard/UpcomingSessions";
+import ReactAIWidget from "../../components/ai-chat/ReactAIWidget";
 
 export default function CounselorDashboard() {
-  const [stats, setStats] = useState({
-    totalSessions: 0,
-    pendingRequests: 0,
-    completedSessions: 0,
-    totalEarnings: 0,
-  });
-  const [notificationsData, setNotificationsData] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [upcomingMeetings, setUpcomingMeetings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { dashboardData, loading, error, refreshing, refreshDashboard, retry } =
+    useCounselorDashboard();
 
-  // Check authentication
-  useEffect(() => {
-    const checkAuth = () => {
-      const isAuth = authService.isAuthenticated();
-      setIsAuthenticated(isAuth);
-      return isAuth;
-    };
+  // Prepare stats data for overview cards
+  const stats = dashboardData?.overview
+    ? [
+        {
+          name: "Sessions Today",
+          value: dashboardData.overview.upcomingSessions?.toString() || "0",
+          icon: CalendarIcon,
+          description: "Sessions scheduled for today",
+        },
+        {
+          name: "Total Students",
+          value: dashboardData.overview.totalStudents?.toString() || "0",
+          icon: UserGroupIcon,
+          description: "Active students",
+        },
+        {
+          name: "Hours Completed",
+          value: "0", // This would come from earnings breakdown
+          icon: ClockIcon,
+          description: "Total counseling hours",
+        },
+        {
+          name: "Monthly Earnings",
+          value: dashboardData.overview.monthlyEarnings || "$0.00",
+          icon: CurrencyDollarIcon,
+          description: "Current month earnings",
+        },
+      ]
+    : [];
 
-    checkAuth();
-  }, []);
+  // Function to handle joining a session
+  const handleJoinSession = (session) => {
+    if (session.meetingLink) {
+      window.open(session.meetingLink, "_blank");
+    } else {
+      window.location.href = `/counselor/sessions`;
+    }
+  };
 
-  // Fetch dashboard data
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!authService.isAuthenticated()) {
-        console.warn("User not authenticated, can't fetch dashboard data");
-        return;
-      }
+  // Calculate earnings progress and change
+  let earningsProgress = 0;
+  let earningsChange = 0;
+  if (dashboardData?.earnings?.breakdown) {
+    const monthlyEarnings = parseFloat(
+      dashboardData.overview.monthlyEarnings.replace(/[^0-9.-]+/g, "") || "0"
+    );
+    const monthlyTarget = 5000; // This would come from user settings
+    earningsProgress =
+      monthlyTarget > 0 ? (monthlyEarnings / monthlyTarget) * 100 : 0;
+  }
 
-      setLoading(true);
-
-      try {
-        // Get counselor ID
-        const user = authService.getUser();
-        const counselorId = user?.id || user?.counselorId;
-
-        // Fetch sessions, requests, notifications, and upcoming meetings in parallel
-        const [
-          sessionsResult,
-          requestsResult,
-          notificationsResult,
-          unreadCountResult,
-          meetingsResult,
-        ] = await Promise.all([
-          safeApiCall(
-            () =>
-              counselorBookings.getCounselorSessions({ page: 1, limit: 100 }),
-            {
-              extractArray: true,
-              dataKey: "data",
-              defaultData: [],
-              errorMessage: "Failed to load sessions",
-            }
-          ),
-          safeApiCall(
-            () =>
-              counselorBookings.getCounselorRequests({ page: 1, limit: 100 }),
-            {
-              extractArray: true,
-              dataKey: "data",
-              defaultData: [],
-              errorMessage: "Failed to load requests",
-            }
-          ),
-          safeApiCall(() => notificationsAPI.getAll({ page: 1, limit: 5 }), {
-            extractArray: true,
-            dataKey: "data",
-            defaultData: [],
-            errorMessage: "Failed to load notifications",
-          }),
-          safeApiCall(() => notificationsAPI.getUnreadCount(), {
-            extractArray: false,
-            dataKey: "data",
-            defaultData: { count: 0 },
-            errorMessage: "Failed to load unread count",
-          }),
-          counselorId
-            ? safeApiCall(
-                () =>
-                  zoomService.getCounselorMeetings(counselorId, {
-                    page: 1,
-                    limit: 5,
-                    status: "scheduled",
-                  }),
-                {
-                  extractArray: false,
-                  dataKey: "meetings",
-                  defaultData: [],
-                  errorMessage: "Failed to load upcoming meetings",
-                }
-              )
-            : Promise.resolve({ success: true, data: [] }),
-        ]);
-
-        // Calculate stats
-        const sessions = ensureArray(
-          sessionsResult.success ? sessionsResult.data : []
-        );
-        const requests = ensureArray(
-          requestsResult.success ? requestsResult.data : []
-        );
-        const notificationsData = ensureArray(
-          notificationsResult.success ? notificationsResult.data : []
-        );
-        const unreadCountData = unreadCountResult.success
-          ? unreadCountResult.data
-          : { count: 0 };
-        const upcomingMeetingsData = ensureArray(
-          meetingsResult.success ? meetingsResult.data : []
-        );
-
-        const newStats = {
-          totalSessions: sessions.length,
-          pendingRequests: requests.filter((r) => r.status === "pending")
-            .length,
-          completedSessions: sessions.filter((s) => s.status === "completed")
-            .length,
-          totalEarnings: sessions
-            .filter((s) => s.status === "completed" && s.counselorEarnings)
-            .reduce((sum, s) => sum + (s.counselorEarnings || 0), 0),
-        };
-
-        setStats(newStats);
-        setNotificationsData(notificationsData);
-        setUnreadCount(unreadCountData.count || 0);
-        setUpcomingMeetings(upcomingMeetingsData);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-        setError("Failed to load dashboard data");
-
-        // Use mock data for demonstration
-        setStats({
-          totalSessions: 12,
-          pendingRequests: 3,
-          completedSessions: 8,
-          totalEarnings: 240,
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboardData();
-  }, []);
-
-  if (!isAuthenticated) {
+  // Error state
+  if (error && !loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-500" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">
-            Authentication Required
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Please log in to access your counselor dashboard.
-          </p>
-          <div className="mt-6">
-            <Link
-              href="/login"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+      <div className="space-y-8">
+        <div className="flex flex-col items-center justify-center h-96">
+          <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Error Loading Dashboard
+          </h2>
+          <p className="text-gray-600 mb-6 text-center max-w-md">{error}</p>
+          <div className="flex space-x-3">
+            <button
+              onClick={retry}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all"
             >
-              Go to Login
-            </Link>
+              <ArrowPathIcon className="h-4 w-4 mr-2" />
+              Retry
+            </button>
+            <button
+              onClick={refreshDashboard}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-full shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all"
+            >
+              Refresh Data
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  const quickActions = [
-    {
-      name: "Manage Availability",
-      description: "Set your available hours for counseling sessions",
-      href: "/counselor/availability",
-      icon: CalendarIcon,
-      color: "bg-blue-500",
-    },
-    {
-      name: "Session Requests",
-      description: "Review and respond to student requests",
-      href: "/counselor/requests",
-      icon: ChatBubbleLeftRightIcon,
-      color: "bg-green-500",
-    },
-    {
-      name: "My Sessions",
-      description: "View and manage your counseling sessions",
-      href: "/counselor/sessions",
-      icon: ClockIcon,
-      color: "bg-purple-500",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* AI Widget */}
-      <ReactAIWidget userRole="counselor" position="bottom-right" />
-
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="px-4 py-6 sm:px-0">
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Counselor Dashboard
+            Welcome Back, Counselor!
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your counseling sessions and student guidance
+          <p className="text-gray-600 mt-1">
+            Here's an overview of your counseling activities
           </p>
+          {dashboardData?.lastUpdated && (
+            <p className="text-xs text-gray-500 mt-1">
+              Last updated:{" "}
+              {new Date(dashboardData.lastUpdated).toLocaleString()}
+            </p>
+          )}
         </div>
+        
+      </div>
 
-        {/* Stats Grid */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <CalendarIcon className="h-6 w-6 text-gray-400" />
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Total Sessions
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {loading ? "..." : stats.totalSessions}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* Stats Grid */}
+      <OverviewCards stats={stats} loading={loading} error={error} />
 
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <ClockIcon className="h-6 w-6 text-yellow-400" />
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Pending Requests
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {loading ? "..." : stats.pendingRequests}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* Upcoming Sessions */}
+      <div>
+        <CounselorSessions
+          sessions={dashboardData?.upcomingSessions || []}
+          loading={loading}
+          error={error}
+          onJoinSession={handleJoinSession}
+        />
+      </div>
 
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <CheckCircleIcon className="h-6 w-6 text-green-400" />
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Completed Sessions
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {loading ? "..." : stats.completedSessions}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <CurrencyDollarIcon className="h-6 w-6 text-green-400" />
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Total Earnings
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {loading ? "..." : `$${stats.totalEarnings}`}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notifications */}
-        {notificationsData.length > 0 && (
-          <div className="px-4 py-6 sm:px-0">
-            <div className="bg-white shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Recent Notifications
-                  </h3>
-                  <Link
-                    href="/counselor/notifications"
-                    className="text-sm text-blue-600 hover:text-blue-500"
-                  >
-                    View all
-                  </Link>
-                </div>
-                <div className="space-y-3">
-                  {notificationsData.slice(0, 3).map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`flex items-start p-3 rounded-lg ${
-                        !notification.read
-                          ? "bg-blue-50 border-l-4 border-blue-400"
-                          : "bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex-shrink-0">
-                        <BellIcon className="h-5 w-5 text-gray-400" />
-                      </div>
-                      <div className="ml-3 flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {notification.title || "Notification"}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {notification.message || notification.content}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {new Date(
-                            notification.createdAt || notification.timestamp
-                          ).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Upcoming Meetings */}
-        {upcomingMeetings.length > 0 && (
-          <div className="px-4 py-6 sm:px-0">
-            <div className="bg-white shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Upcoming Meetings
-                  </h3>
-                  <Link
-                    href="/counselor/meetings"
-                    className="text-sm text-blue-600 hover:text-blue-500"
-                  >
-                    View all meetings
-                  </Link>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {upcomingMeetings.slice(0, 3).map((meeting) => (
-                    <MeetingCard
-                      key={meeting.id}
-                      meeting={meeting}
-                      userRole="counselor"
-                      showActions={false}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Earnings Overview */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Earnings Overview
-                </h3>
-                <Link
-                  href="/counselor/earnings"
-                  className="text-sm text-blue-600 hover:text-blue-500"
-                >
-                  View detailed earnings
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-green-600">
-                    ${stats.totalEarnings}
-                  </p>
-                  <p className="text-sm text-gray-500">Total Earnings</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-blue-600">
-                    {stats.completedSessions}
-                  </p>
-                  <p className="text-sm text-gray-500">Completed Sessions</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-purple-600">
-                    $
-                    {stats.completedSessions > 0
-                      ? Math.round(
-                          stats.totalEarnings / stats.completedSessions
-                        )
-                      : 0}
-                  </p>
-                  <p className="text-sm text-gray-500">Avg per Session</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="px-4 py-6 sm:px-0">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">
-            Quick Actions
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {quickActions.map((action) => (
-              <Link
-                key={action.name}
-                href={action.href}
-                className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 rounded-lg shadow hover:shadow-md transition-shadow"
+      {/* Earnings Overview */}
+      {dashboardData?.earnings && (
+        <div className="bg-white shadow-md rounded-xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+              <CurrencyDollarIcon className="h-6 w-6 mr-2 text-blue-600" />
+              Earnings Overview
+            </h3>
+            <Link
+              href="/counselor/earnings"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center"
+            >
+              View detailed earnings
+              <svg
+                className="ml-1 w-5 h-5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
               >
-                <div>
-                  <span
-                    className={`rounded-lg inline-flex p-3 ${action.color} text-white`}
-                  >
-                    <action.icon className="h-6 w-6" aria-hidden="true" />
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    {action.name}
-                  </h3>
-                  <p className="mt-2 text-sm text-gray-500">
-                    {action.description}
-                  </p>
-                </div>
-                <span
-                  className="pointer-events-none absolute top-6 right-6 text-gray-300 group-hover:text-gray-400"
-                  aria-hidden="true"
+                <path
+                  fillRule="evenodd"
+                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </Link>
+          </div>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-3xl font-bold text-gray-900">
+                  {dashboardData.overview.monthlyEarnings}
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  Current month earnings
+                </p>
+              </div>
+              <div className="text-right">
+                <p
+                  className={`text-sm font-medium flex items-center justify-end ${
+                    earningsChange >= 0 ? "text-green-600" : "text-red-600"
+                  }`}
                 >
-                  <ArrowRightIcon className="h-5 w-5" />
-                </span>
-              </Link>
-            ))}
+                  {earningsChange >= 0 ? (
+                    <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
+                  ) : (
+                    <ArrowTrendingUpIcon className="h-4 w-4 mr-1 rotate-180" />
+                  )}
+                  {earningsChange >= 0 ? "+" : ""}
+                  {earningsChange.toFixed(1)}% from last month
+                </p>
+                <p className="text-sm text-gray-600 mt-1">$0 last month</p>
+              </div>
+            </div>
+            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all duration-300"
+                style={{ width: `${earningsProgress.toFixed(0)}%` }}
+              ></div>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">
+              {earningsProgress.toFixed(0)}% of your monthly target
+            </p>
+          </div>
+          
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <CalendarIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Manage Schedule
+              </h3>
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              View sessions and update availability
+            </div>
+          </div>
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/counselor/availability"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              Go to schedule
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Recent Activity
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <CurrencyDollarIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Earnings
               </h3>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <p className="mt-2 text-sm text-gray-500">
-                    Loading activity...
-                  </p>
-                </div>
-              ) : error ? (
-                <div className="text-center py-8">
-                  <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-red-400" />
-                  <p className="mt-2 text-sm text-gray-500">{error}</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <CalendarIcon className="h-4 w-4 mr-2 text-blue-500" />
-                    <span>
-                      You have {stats.pendingRequests} pending session requests
-                    </span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600">
-                    <CheckCircleIcon className="h-4 w-4 mr-2 text-green-500" />
-                    <span>
-                      {stats.completedSessions} sessions completed this month
-                    </span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600">
-                    <CurrencyDollarIcon className="h-4 w-4 mr-2 text-green-500" />
-                    <span>Total earnings: ${stats.totalEarnings}</span>
-                  </div>
-                </div>
-              )}
             </div>
+            <div className="mt-3 text-sm text-gray-600">
+              View payouts and earnings history
+            </div>
+          </div>
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/counselor/earnings"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              View earnings
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),_0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl transition-transform hover:translate-y-[-4px]">
+          <div className="px-5 py-5">
+            <div className="flex items-center">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#dbeafe]">
+                <BellIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="ml-3 text-lg font-medium text-gray-900">
+                Notifications
+              </h3>
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              Alerts and updates
+            </div>
+          </div>
+          <div className="bg-gray-50 px-5 py-3 flex justify-end">
+            <Link
+              href="/counselor/notifications"
+              className="font-medium text-blue-600 hover:text-blue-700 text-sm flex items-center"
+            >
+              View notifications
+              <svg className="ml-1 w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </Link>
           </div>
         </div>
       </div>
+
+      {/* ReAct AI Widget */}
+      <ReactAIWidget userRole="counselor" />
     </div>
   );
 }

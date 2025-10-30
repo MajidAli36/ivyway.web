@@ -29,6 +29,7 @@ export default function UpcomingSessions({
   className = "",
   emptyMessage = "No upcoming sessions scheduled.",
   emptyAction = null,
+  viewSessionsHref = "/student/my-sessions",
 }) {
   const [hoveredSession, setHoveredSession] = useState(null);
 
@@ -170,6 +171,20 @@ export default function UpcomingSessions({
       .slice(0, 2);
   };
 
+  const getProfileImage = (session) => {
+    return (
+      session?.profileImageUrl ||
+      session?.providerImage ||
+      session?.studentImage ||
+      session?.profileImage ||
+      session?.avatar ||
+      session?.tutorAvatar ||
+      session?.studentAvatar ||
+      session?.providerAvatar ||
+      null
+    );
+  };
+
   return (
     <div
       className={`bg-white shadow-md rounded-xl overflow-hidden ${className}`}
@@ -187,7 +202,7 @@ export default function UpcomingSessions({
           </div>
           {showViewAll && sessions.length > 0 && (
             <Link
-              href="/student/my-sessions"
+              href={viewSessionsHref}
               className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center transition-colors"
             >
               View all
@@ -213,7 +228,23 @@ export default function UpcomingSessions({
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center text-white font-bold">
+                    {getProfileImage(session) ? (
+                      <img
+                        src={getProfileImage(session)}
+                        alt={(session.providerName || session.studentName || "User") + " avatar"}
+                        className="h-12 w-12 rounded-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                          if (e.target.nextElementSibling) {
+                            e.target.nextElementSibling.style.display = "flex";
+                          }
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center text-white font-bold"
+                      style={{ display: getProfileImage(session) ? "none" : "flex" }}
+                    >
                       {getInitials(session.providerName || session.studentName)}
                     </div>
                   </div>
@@ -273,15 +304,13 @@ export default function UpcomingSessions({
 
                   {onJoinSession &&
                     session.status?.toLowerCase() === "confirmed" && (
-                      <button
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 transition-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onJoinSession(session);
-                        }}
+                      <Link
+                        href={viewSessionsHref}
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-full shadow-sm text-gray-700 bg-white hover:bg-gray-50"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        Join Session
-                      </button>
+                        View Session
+                      </Link>
                     )}
                 </div>
               </div>
@@ -298,7 +327,7 @@ export default function UpcomingSessions({
         {hasMoreSessions && (
           <div className="px-6 py-4 bg-gray-50 flex justify-center">
             <Link
-              href="/student/my-sessions"
+              href={viewSessionsHref}
               className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center"
             >
               View {sessions.length - maxSessions} more sessions
@@ -321,12 +350,22 @@ export const StudentSessions = ({
   onJoinSession,
 }) => (
   <UpcomingSessions
-    sessions={sessions}
+    sessions={(sessions || [])
+      .filter((s) => {
+        const start = s?.startTime ? new Date(s.startTime) : null;
+        if (!start || isNaN(start)) return false;
+        const now = new Date();
+        const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        return start >= startOfTomorrow;
+      })
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+      .slice(0, 5)}
     loading={loading}
     error={error}
-    title="My Upcoming Sessions"
-    onJoinSession={onJoinSession}
-    emptyMessage="No upcoming sessions scheduled."
+    title="Upcoming Sessions"
+    onJoinSession={undefined}
+    viewSessionsHref="/student/my-sessions"
+    emptyMessage="No upcoming sessions."
     emptyAction={
       <Link
         href="/student/book-session"
@@ -340,12 +379,22 @@ export const StudentSessions = ({
 
 export const TutorSessions = ({ sessions, loading, error, onJoinSession }) => (
   <UpcomingSessions
-    sessions={sessions}
+    sessions={(sessions || [])
+      .filter((s) => {
+        const start = s?.startTime ? new Date(s.startTime) : null;
+        if (!start || isNaN(start)) return false;
+        const now = new Date();
+        const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        return start >= startOfTomorrow;
+      })
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+      .slice(0, 5)}
     loading={loading}
     error={error}
-    title="Today's Sessions"
-    onJoinSession={onJoinSession}
-    emptyMessage="No sessions scheduled for today."
+    title="Upcoming Sessions"
+    onJoinSession={undefined}
+    viewSessionsHref="/tutor/sessions"
+    emptyMessage="No upcoming sessions."
     emptyAction={
       <Link
         href="/tutor/schedule/availability"
@@ -364,18 +413,28 @@ export const CounselorSessions = ({
   onJoinSession,
 }) => (
   <UpcomingSessions
-    sessions={sessions}
+    sessions={(sessions || [])
+      .filter((s) => {
+        const start = s?.startTime ? new Date(s.startTime) : null;
+        if (!start || isNaN(start)) return false;
+        const now = new Date();
+        const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        return start >= startOfTomorrow;
+      })
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+      .slice(0, 5)}
     loading={loading}
     error={error}
-    title="Today's Guidance Sessions"
-    onJoinSession={onJoinSession}
-    emptyMessage="No guidance sessions scheduled for today."
+    title="Upcoming Sessions"
+    onJoinSession={undefined}
+    viewSessionsHref="/counselor/sessions"
+    emptyMessage="No upcoming sessions."
     emptyAction={
       <Link
-        href="/counselor/schedule-session"
+        href="/counselor/availability"
         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700"
       >
-        Schedule Session
+        Update Availability
       </Link>
     }
   />

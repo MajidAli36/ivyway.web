@@ -15,7 +15,7 @@ export default function TutorCard({ tutor, isSelected, onSelect }) {
     <div
       className={`group relative border-2 rounded-xl p-3 sm:p-4 md:p-6 cursor-pointer transition-all duration-300 hover:shadow-xl overflow-hidden ${
         isSelected
-          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200 shadow-lg transform scale-[1.02]"
+          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200 shadow-lg"
           : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
       }`}
       onClick={() => onSelect(tutor.id)}
@@ -39,10 +39,6 @@ export default function TutorCard({ tutor, isSelected, onSelect }) {
                 className="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20 rounded-full object-cover border-2 sm:border-3 border-white shadow-lg"
                 onError={handleProfileImageError}
               />
-              {/* Online status indicator */}
-              <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-green-500 rounded-full border-2 border-white shadow-sm">
-                <div className="w-full h-full rounded-full bg-green-400 animate-pulse"></div>
-              </div>
             </div>
           </div>
 
@@ -125,10 +121,6 @@ export default function TutorCard({ tutor, isSelected, onSelect }) {
               <span className="truncate">
                 {tutor.experience || 3}+ years exp
               </span>
-            </span>
-            <span className="flex items-center">
-              <div className="w-2 h-2 bg-green-400 rounded-full mr-1 flex-shrink-0"></div>
-              <span className="truncate">Available today</span>
             </span>
           </div>
 
