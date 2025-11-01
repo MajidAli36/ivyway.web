@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Fragment } from "react";
 import { Formik, Form, Field, FieldArray } from "formik";
 import * as Yup from "yup";
+import { Dialog, Transition } from "@headlessui/react";
 import {
   UserIcon,
   AcademicCapIcon,
@@ -49,18 +50,10 @@ const counselorProfileSchema = Yup.object().shape({
     .required("Bio is required"),
 
   // Professional Information
-  specialization: Yup.string()
-    .min(2, "Specialization must be at least 2 characters")
-    .max(100, "Specialization must be less than 100 characters")
-    .required("Specialization is required"),
   experience: Yup.number()
     .min(0, "Experience cannot be negative")
     .max(50, "Experience cannot exceed 50 years")
     .required("Experience is required"),
-  hourlyRate: Yup.number()
-    .min(0, "Hourly rate cannot be negative")
-    .max(1000, "Hourly rate cannot exceed $1000")
-    .required("Hourly rate is required"),
 
   // Education (array of objects)
   education: Yup.array()
@@ -120,12 +113,10 @@ const CounselorProfile = () => {
     profileImageUrl: "",
 
     // Professional Information
-    specialization: "",
     education: [],
     experience: 0,
     certifications: [],
     languages: [],
-    hourlyRate: 0,
 
     // Additional Information
     introVideoUrl: "",
@@ -139,6 +130,7 @@ const CounselorProfile = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 2FA States - Matching student profile
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -149,6 +141,7 @@ const CounselorProfile = () => {
 
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const submitFormRef = useRef(null);
 
   // Load profile data from API
   useEffect(() => {
@@ -199,12 +192,10 @@ const CounselorProfile = () => {
           bio: profileData.bio || "",
           profileImage: null,
           profileImageUrl: profileData.profileImage || "",
-          specialization: profileData.specialization || "",
           education: education,
           experience: profileData.experience || 0,
           certifications: certifications,
           languages: languages,
-          hourlyRate: profileData.hourlyRate || 0,
           introVideoUrl: profileData.introVideoUrl || "",
           profileCompletion: profileData.profileCompletion || 0,
         };
@@ -232,10 +223,9 @@ const CounselorProfile = () => {
   // Calculate profile completion percentage using weighted calculation (same as backend)
   const calculateProfileCompletion = () => {
     const fields = [
-      { key: "bio", weight: 15 },
-      { key: "specialization", weight: 15 },
-      { key: "education", weight: 20 },
-      { key: "experience", weight: 10 },
+      { key: "bio", weight: 20 },
+      { key: "education", weight: 25 },
+      { key: "experience", weight: 15 },
       { key: "certifications", weight: 15 },
       { key: "languages", weight: 10 },
       { key: "profileImageUrl", weight: 10 }, // Use profileImageUrl instead of profileImage
@@ -276,7 +266,6 @@ const CounselorProfile = () => {
     const missing = [];
     const fieldLabels = {
       bio: "Bio",
-      specialization: "Specialization",
       education: "Education",
       experience: "Experience",
       certifications: "Certifications",
@@ -384,6 +373,8 @@ const CounselorProfile = () => {
         }));
         setSuccessMessage("Intro video uploaded successfully!");
         setTimeout(() => setSuccessMessage(""), 5000);
+        // Reload profile to get updated completion
+        await loadProfile();
       } else {
         throw new Error("No video URL received from server");
       }
@@ -391,18 +382,84 @@ const CounselorProfile = () => {
       console.error("Error uploading video:", err);
 
       // Handle specific error cases
-      if (err.message?.includes("File too large")) {
+      let errorMessage = "Failed to upload video. Please try again.";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.message) {
+        errorMessage = err.response.message;
+      }
+
+      if (errorMessage.includes("File too large") || errorMessage.includes("too large")) {
         setError("File size must be less than 50MB");
-      } else if (err.message?.includes("Video upload service")) {
+      } else if (errorMessage.includes("Video upload service") || errorMessage.includes("temporarily unavailable")) {
         setError("Upload service temporarily unavailable");
+      } else if (errorMessage.includes("Profile not found")) {
+        setError("Profile not found. Please save your profile first.");
       } else {
-        setError(err.message || "Failed to upload video. Please try again.");
+        setError(errorMessage);
       }
     } finally {
       setTimeout(() => {
         setIsSaving(false);
         setUploadProgress(0);
       }, 1000);
+    }
+  };
+
+  const handleVideoDelete = async () => {
+    try {
+      setIsSaving(true);
+      setError("");
+      const response = await counselorProfileService.deleteIntroVideo();
+
+      // Check if response has success property (from backend)
+      if (response && response.success !== false) {
+        setFormData((prev) => ({
+          ...prev,
+          introVideoUrl: "",
+        }));
+        setSuccessMessage(response.message || "Intro video deleted successfully!");
+        setTimeout(() => setSuccessMessage(""), 5000);
+        // Reload profile to get updated completion
+        await loadProfile();
+      } else {
+        throw new Error(response?.message || "Failed to delete video");
+      }
+    } catch (err) {
+      console.error("Error deleting video:", err);
+      
+      // Extract error message from various possible formats
+      let errorMessage = "Failed to delete video. Please try again.";
+      
+      // Handle our custom error object format
+      if (err && typeof err === 'object') {
+        if (err.message) {
+          errorMessage = err.message;
+        } else if (err.response?.message) {
+          errorMessage = err.response.message;
+        } else if (err.response?.error) {
+          errorMessage = err.response.error;
+        } else if (err.status && err.statusText) {
+          errorMessage = `Error ${err.status}: ${err.statusText}`;
+        }
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      // If we still have a generic message and there's more info, log it
+      if (errorMessage === "Failed to delete video. Please try again.") {
+        console.error("Full error object:", JSON.stringify(err, null, 2));
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsSaving(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -481,12 +538,10 @@ const CounselorProfile = () => {
     try {
       const profileData = {
         bio: values.bio,
-        specialization: values.specialization,
         education: values.education,
         experience: values.experience,
         certifications: values.certifications,
         languages: values.languages,
-        hourlyRate: values.hourlyRate,
         profileImage: values.profileImage,
       };
 
@@ -514,19 +569,13 @@ const CounselorProfile = () => {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     setIsEditing(false);
     setError("");
     setSuccessMessage("");
     setShowSuccessModal(false);
-    // Reset profile image if not saved
-    if (formData.profileImage) {
-      setFormData((prev) => ({
-        ...prev,
-        profileImage: null,
-        profileImageUrl: prev.profileImageUrl,
-      }));
-    }
+    // Reload profile to reset all changes including profile image
+    await loadProfile();
   };
 
   const profileCompletion =
@@ -573,13 +622,34 @@ const CounselorProfile = () => {
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              {!isEditing && (
+              {!isEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                 >
                   Edit Profile
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (submitFormRef.current) {
+                        submitFormRef.current();
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -624,7 +694,10 @@ const CounselorProfile = () => {
           onSubmit={handleFormSubmit}
           enableReinitialize={true}
         >
-          {({ values, errors, touched, setFieldValue, isSubmitting }) => (
+          {({ values, errors, touched, setFieldValue, isSubmitting, submitForm }) => {
+            // Store submitForm in ref so it can be accessed outside
+            submitFormRef.current = submitForm;
+            return (
             <Form className="bg-white shadow rounded-lg">
           <div className="p-8">
             {/* Profile Photo Section */}
@@ -824,26 +897,6 @@ const CounselorProfile = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Specialization *
-                  </label>
-                  <Field
-                    type="text"
-                    name="specialization"
-                    placeholder="e.g., College Admissions, Career Guidance, Academic Counseling"
-                    disabled={!isEditing}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
-                      errors.specialization && touched.specialization
-                        ? "border-red-300"
-                        : "border-gray-300"
-                    }`}
-                  />
-                  {errors.specialization && touched.specialization && (
-                    <p className="mt-1 text-sm text-red-600">{errors.specialization}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Experience (Years) *
                   </label>
                   <Field
@@ -861,28 +914,6 @@ const CounselorProfile = () => {
                   />
                   {errors.experience && touched.experience && (
                     <p className="mt-1 text-sm text-red-600">{errors.experience}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Hourly Rate ($) *
-                  </label>
-                  <Field
-                    type="number"
-                    name="hourlyRate"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    disabled={!isEditing}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 ${
-                      errors.hourlyRate && touched.hourlyRate
-                        ? "border-red-300"
-                        : "border-gray-300"
-                    }`}
-                  />
-                  {errors.hourlyRate && touched.hourlyRate && (
-                    <p className="mt-1 text-sm text-red-600">{errors.hourlyRate}</p>
                   )}
                 </div>
               </div>
@@ -1030,7 +1061,7 @@ const CounselorProfile = () => {
 
             {/* Certifications & Languages Section */}
             <div className="mb-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-8">
                 {/* Certifications */}
                 <div>
                   <div className="flex items-center mb-4">
@@ -1106,57 +1137,80 @@ const CounselorProfile = () => {
                     </h3>
                   </div>
                   {isEditing ? (
-                    <FieldArray name="languages">
-                      {({ push, remove }) => (
-                        <div className="space-y-2">
-                          {values.languages?.map((lang, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                              <Field
-                                type="text"
-                                name={`languages.${index}`}
-                                className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                                  errors.languages?.[index] ? "border-red-300" : "border-gray-300"
-                                }`}
-                                placeholder="e.g., English, Spanish, French"
-                              />
-                              <button
-                                type="button"
-                                className="text-red-500 hover:text-red-700 p-1"
-                                onClick={() => remove(index)}
-                              >
-                                <XMarkIcon className="h-5 w-5" />
-                              </button>
-                            </div>
-                          ))}
-                          <button
-                            type="button"
-                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-                            onClick={() => push("")}
+                    <div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        {[
+                          "English",
+                          "Spanish",
+                          "French",
+                          "Mandarin",
+                          "Arabic",
+                          "Hindi",
+                          "German",
+                          "Portuguese",
+                          "Japanese",
+                          "Korean",
+                          "Italian",
+                          "Russian",
+                          "Other",
+                        ].map((language) => (
+                          <label
+                            key={language}
+                            className={`flex items-center space-x-3 cursor-pointer p-2 rounded-lg transition-all duration-200 ${
+                              values.languages?.includes(language)
+                                ? "bg-blue-50 border border-blue-200 hover:bg-blue-100"
+                                : "bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                            }`}
                           >
-                            <PlusIcon className="h-5 w-5" />
-                            Add Language
-                          </button>
-                          {errors.languages && typeof errors.languages === 'string' && (
-                            <p className="text-sm text-red-600">{errors.languages}</p>
-                          )}
-                        </div>
+                            <Field
+                              type="checkbox"
+                              name="languages"
+                              value={language}
+                              checked={values.languages?.includes(language) || false}
+                              onChange={(e) => {
+                                const currentLanguages = values.languages || [];
+                                if (e.target.checked) {
+                                  setFieldValue("languages", [...currentLanguages, language]);
+                                } else {
+                                  setFieldValue(
+                                    "languages",
+                                    currentLanguages.filter((lang) => lang !== language)
+                                  );
+                                }
+                              }}
+                              disabled={!isEditing}
+                              className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50 accent-blue-600 checked:bg-blue-600 checked:border-blue-600"
+                              style={{ accentColor: "#2563eb" }}
+                            />
+                            <span
+                              className={`text-sm font-medium transition-colors duration-200 ${
+                                values.languages?.includes(language)
+                                  ? "text-blue-700"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {language}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {errors.languages && typeof errors.languages === "string" && (
+                        <p className="mt-2 text-sm text-red-600">{errors.languages}</p>
                       )}
-                    </FieldArray>
+                    </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {values.languages && values.languages.length > 0 ? (
                         values.languages.map((lang, index) => (
                           <span
                             key={index}
-                            className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm border border-blue-200"
                           >
                             {lang}
                           </span>
                         ))
                       ) : (
-                        <p className="text-gray-500 italic">
-                          No languages added
-                        </p>
+                        <p className="text-gray-500 italic">No languages selected</p>
                       )}
                     </div>
                   )}
@@ -1164,137 +1218,102 @@ const CounselorProfile = () => {
               </div>
             </div>
 
-            {/* Intro Video Section */}
-            <div className="mb-8">
-              <div className="flex items-center mb-6">
-                <VideoCameraIcon className="h-6 w-6 text-blue-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Intro Video
-                </h2>
-              </div>
+          </div>
+            </Form>
+            );
+          }}
+        </Formik>
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={handleVideoFileChange}
-                  className="hidden"
-                />
-
-                {formData.introVideoUrl ? (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      Intro video uploaded
-                    </p>
-                    <video
-                      src={getFullUrl(formData.introVideoUrl)}
-                      controls
-                      className="mx-auto max-w-md mb-4 rounded-lg shadow-md"
-                      preload="metadata"
-                      onError={(e) => {
-                        console.error("Video loading error:", e);
-                        setError(
-                          "Failed to load video. Please try uploading again."
-                        );
-                      }}
-                    />
-                    {isEditing && (
-                      <div className="flex justify-center space-x-3">
-                        <button
-                          type="button"
-                          onClick={() => videoInputRef.current?.click()}
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                        >
-                          Replace Video
-                        </button>
-                        {/* <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              setFormData((prev) => ({
-                                ...prev,
-                                introVideoUrl: "",
-                              }));
-                              setSuccessMessage("Video removed successfully!");
-                              setTimeout(() => setSuccessMessage(""), 3000);
-                            } catch (err) {
-                              console.error("Error removing video:", err);
-                              setError(
-                                "Failed to remove video. Please try again."
-                              );
-                            }
-                          }}
-                          className="text-red-600 hover:text-red-700 text-sm font-medium"
-                        >
-                          Remove Video
-                        </button> */}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-sm text-gray-600 mb-2">
-                      No intro video uploaded
-                    </p>
-                    <p className="text-xs text-gray-500 mb-4">
-                      Upload a short video introducing yourself (max 50MB)
-                    </p>
-                    {isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => videoInputRef.current?.click()}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                      >
-                        <VideoCameraIcon className="h-4 w-4 mr-2" />
-                        Upload Video
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {isSaving && uploadProgress > 0 && (
-                  <div className="mt-4">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Uploading... {uploadProgress}%
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Intro Video Section - Always visible, outside edit mode */}
+        <div className="mt-8 mb-8 bg-white shadow rounded-lg p-8">
+          <div className="flex items-center mb-6">
+            <VideoCameraIcon className="h-6 w-6 text-blue-600 mr-3" />
+            <h2 className="text-xl font-semibold text-gray-900">
+              Intro Video
+            </h2>
           </div>
 
-              {/* Form Actions */}
-              {isEditing && (
-                <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-                  <div className="flex justify-end space-x-3">
-                    <button
-                      type="button"
-                      onClick={handleCancel}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || isSaving}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSubmitting || isSaving ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleVideoFileChange}
+              className="hidden"
+            />
+
+            {formData.introVideoUrl ? (
+              <div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Intro video uploaded
+                </p>
+                <video
+                  src={getFullUrl(formData.introVideoUrl)}
+                  controls
+                  className="mx-auto max-w-md mb-4 rounded-lg shadow-md"
+                  preload="metadata"
+                  onError={(e) => {
+                    console.error("Video loading error:", e);
+                    setError(
+                      "Failed to load video. Please try uploading again."
+                    );
+                  }}
+                />
+                <div className="flex justify-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    className="inline-flex items-center px-4 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    <VideoCameraIcon className="h-4 w-4 mr-2" />
+                    Replace Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSaving}
+                    className="inline-flex items-center px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <XMarkIcon className="h-4 w-4 mr-2" />
+                    Delete Video
+                  </button>
                 </div>
-              )}
-            </Form>
-          )}
-        </Formik>
+              </div>
+            ) : (
+              <div>
+                <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-sm text-gray-600 mb-2">
+                  No intro video uploaded
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Upload a short video introducing yourself (max 50MB)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                >
+                  <VideoCameraIcon className="h-4 w-4 mr-2" />
+                  Upload Video
+                </button>
+              </div>
+            )}
+
+            {isSaving && uploadProgress > 0 && (
+              <div className="mt-4">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Uploading... {uploadProgress}%
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         <TwoFAModal />
         <SuccessModal 
@@ -1304,6 +1323,59 @@ const CounselorProfile = () => {
           title="Counselor Profile Updated Successfully!"
           message="Your counselor profile has been updated successfully. All changes have been saved and your profile is now up to date."
         />
+
+        {/* Delete Video Confirmation Modal */}
+        <Transition appear show={showDeleteConfirm} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowDeleteConfirm(false)}>
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900 flex items-center gap-2"
+                    >
+                      <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+                      Delete Intro Video
+                    </Dialog.Title>
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to delete your intro video? This action cannot be undone.
+                      </p>
+                    </div>
+
+                    <div className="mt-6 flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={handleVideoDelete}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
       </div>
     </div>
   );

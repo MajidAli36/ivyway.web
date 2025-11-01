@@ -18,9 +18,7 @@ class CounselorProfileService {
 
     // Add text fields
     formData.append("bio", profileData.bio || "");
-    formData.append("specialization", profileData.specialization || "");
     formData.append("experience", profileData.experience || 0);
-    formData.append("hourlyRate", profileData.hourlyRate || 0);
 
     // Add JSON fields
     if (profileData.education) {
@@ -99,6 +97,83 @@ class CounselorProfileService {
     console.log("Video uploaded successfully:", result.data?.introVideoUrl);
 
     return result;
+  }
+
+  // Delete intro video
+  async deleteIntroVideo() {
+    try {
+      const token = localStorage.getItem("jwt_token");
+      const response = await fetch(
+        `${API_CONFIG.baseURL}/counselor-profiles/intro-video`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      // Try to parse response as JSON
+      let data;
+      const responseText = await response.text();
+      
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        console.error("Error parsing response JSON:", parseError);
+        console.error("Response text:", responseText);
+        // If JSON parsing fails, try to extract error message from text
+        data = {
+          message: responseText || "Unknown error occurred",
+          error: responseText || "Unknown error occurred"
+        };
+      }
+
+      if (!response.ok) {
+        // Handle different error status codes
+        // Backend error format: { status: 'error', message: '...' }
+        let errorMessage;
+        
+        // Extract message from various possible formats
+        // Backend returns: { status: 'error', message: '...' }
+        errorMessage = 
+          data.message || 
+          data.error || 
+          response.statusText || 
+          `Request failed with status ${response.status}`;
+        
+        // Provide more specific messages for common status codes
+        if (response.status === 401) {
+          errorMessage = errorMessage || "Authentication failed. Please log in again.";
+        } else if (response.status === 403) {
+          errorMessage = errorMessage || "You don't have permission to perform this action.";
+        } else if (response.status === 404) {
+          errorMessage = errorMessage || "Resource not found.";
+        }
+        
+        throw {
+          status: response.status,
+          message: errorMessage,
+          errors: data.errors || null,
+          response: data,
+        };
+      }
+
+      return data;
+    } catch (err) {
+      // If it's already our custom error object, re-throw it
+      if (err.status && err.message) {
+        throw err;
+      }
+      
+      // Otherwise, wrap network errors and other exceptions
+      throw {
+        status: err.status || 500,
+        message: err.message || "Network error: Failed to delete video. Please check your connection.",
+        errors: null,
+      };
+    }
   }
 
   // Update profile image

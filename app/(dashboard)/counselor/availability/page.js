@@ -50,7 +50,7 @@ const sessionTypes = [
 export default function CounselorAvailability() {
   const [scheduleData, setScheduleData] = useState([]);
   const [newSlots, setNewSlots] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [defaultIsAvailable, setDefaultIsAvailable] = useState(true);
@@ -62,7 +62,9 @@ export default function CounselorAvailability() {
   // Confirmation modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [pendingEditSlotId, setPendingEditSlotId] = useState(null);
 
   // Check authentication status on component mount
   useEffect(() => {
@@ -80,72 +82,80 @@ export default function CounselorAvailability() {
     const fetchAvailability = async () => {
       if (!authService.isAuthenticated()) {
         console.warn("User not authenticated, can't fetch availability");
+        setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
+      setErrorMessage(""); // Clear any previous errors
 
-      const result = await safeApiCall(
-        () => availabilityAPI.getMyAvailability(),
-        {
-          extractArray: false,
-          dataKey: "data",
-          defaultData: {},
-          errorMessage: "Failed to load availability data. Please try again.",
-        }
-      );
-
-      if (result.success) {
-        console.log("Fetched availability data:", result.data);
-
-        // Handle the new API response format
-        const availabilityData = result.data.availability || result.data;
-
-        // Convert the availability object to array format for display
-        const formattedData = [];
-        if (availabilityData && typeof availabilityData === "object") {
-          Object.keys(availabilityData).forEach((dayOfWeek) => {
-            const daySlots = availabilityData[dayOfWeek];
-            if (Array.isArray(daySlots)) {
-              daySlots.forEach((slot) => {
-                // Ensure we have a proper ID - use server ID if available, otherwise generate a temp one
-                const slotId =
-                  slot.id ||
-                  slot._id ||
-                  `temp-${Date.now()}-${Math.random()
-                    .toString(36)
-                    .substring(2)}`;
-
-                formattedData.push({
-                  id: slotId,
-                  dayOfWeek: parseInt(dayOfWeek),
-                  startTime: slot.startTime
-                    ? slot.startTime.substring(0, 5)
-                    : "09:00",
-                  endTime: slot.endTime
-                    ? slot.endTime.substring(0, 5)
-                    : "10:00",
-                  isAvailable: slot.isAvailable !== false,
-                  recurrence: slot.recurrence || "weekly",
-                  sessionTypes: slot.sessionTypes || ["30min", "60min"],
-                });
-              });
-            }
-          });
-        }
-
-        setScheduleData(formattedData);
-        setErrorMessage("");
-      } else {
-        console.error(
-          "API call failed, using empty data for testing:",
-          result.error
+      try {
+        const result = await safeApiCall(
+          () => availabilityAPI.getMyAvailability(),
+          {
+            extractArray: false,
+            dataKey: "data",
+            defaultData: {},
+            errorMessage: "Failed to load availability data. Please try again.",
+          }
         );
+
+        if (result.success) {
+          console.log("Fetched availability data:", result.data);
+
+          // Handle the new API response format
+          const availabilityData = result.data.availability || result.data;
+
+          // Convert the availability object to array format for display
+          const formattedData = [];
+          if (availabilityData && typeof availabilityData === "object") {
+            Object.keys(availabilityData).forEach((dayOfWeek) => {
+              const daySlots = availabilityData[dayOfWeek];
+              if (Array.isArray(daySlots)) {
+                daySlots.forEach((slot) => {
+                  // Ensure we have a proper ID - use server ID if available, otherwise generate a temp one
+                  const slotId =
+                    slot.id ||
+                    slot._id ||
+                    `temp-${Date.now()}-${Math.random()
+                      .toString(36)
+                      .substring(2)}`;
+
+                  formattedData.push({
+                    id: slotId,
+                    dayOfWeek: parseInt(dayOfWeek),
+                    startTime: slot.startTime
+                      ? slot.startTime.substring(0, 5)
+                      : "09:00",
+                    endTime: slot.endTime
+                      ? slot.endTime.substring(0, 5)
+                      : "10:00",
+                    isAvailable: slot.isAvailable !== false,
+                    recurrence: slot.recurrence || "weekly",
+                    sessionTypes: slot.sessionTypes || ["30min", "60min"],
+                  });
+                });
+              }
+            });
+          }
+
+          setScheduleData(formattedData);
+          setErrorMessage("");
+        } else {
+          console.error(
+            "API call failed, using empty data for testing:",
+            result.error
+          );
+          setScheduleData([]);
+          setErrorMessage("Failed to load availability data. Please try again.");
+        }
+      } catch (error) {
+        console.error("Error fetching availability:", error);
         setScheduleData([]);
         setErrorMessage("Failed to load availability data. Please try again.");
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     };
 
     fetchAvailability();
@@ -233,6 +243,10 @@ export default function CounselorAvailability() {
       setIsLoading(true);
       setErrorMessage("");
 
+      // Close confirmation modal if it was shown
+      setShowEditConfirm(false);
+      setPendingEditSlotId(null);
+
       // Validate times: allow cross-midnight, ensure format
       const startMin = toMinutes(editingData.startTime);
       const endMin = toMinutes(editingData.endTime);
@@ -244,6 +258,7 @@ export default function CounselorAvailability() {
         startTime: String(editingData.startTime).substring(0, 5),
         endTime: String(editingData.endTime).substring(0, 5),
         isAvailable: Boolean(editingData.isAvailable),
+        recurrence: editingData.recurrence || "weekly",
         sessionTypes: editingData.sessionTypes,
       };
 
@@ -267,6 +282,7 @@ export default function CounselorAvailability() {
                 startTime: payload.startTime,
                 endTime: payload.endTime,
                 isAvailable: payload.isAvailable,
+                recurrence: payload.recurrence || "weekly",
                 sessionTypes: payload.sessionTypes,
               }
             : s
@@ -416,16 +432,17 @@ export default function CounselorAvailability() {
       // Process the successful responses to get the new slots with their server-generated IDs
       const newSlotsWithIds = results.map((result, index) => {
         const slotData = formattedData[index];
+        const createdSlot = result.data;
         return {
           id:
-            result.data?.id ||
+            createdSlot?.id ||
             result.data?.id ||
             `saved-${Date.now()}-${index}`,
           dayOfWeek: slotData.dayOfWeek,
           startTime: slotData.startTime,
           endTime: slotData.endTime,
           isAvailable: slotData.isAvailable,
-          recurrence: slotData.recurrence,
+          recurrence: createdSlot?.recurrence || slotData.recurrence || "weekly",
           sessionTypes: slotData.sessionTypes,
         };
       });
@@ -541,6 +558,54 @@ export default function CounselorAvailability() {
 
     setIsLoading(false);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          {/* Header Skeleton */}
+          <div className="px-4 py-6 sm:px-0">
+            <div className="animate-pulse">
+              <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+            </div>
+          </div>
+
+          {/* Content Skeleton */}
+          <div className="px-4 py-6 sm:px-0">
+            <div className="bg-white shadow rounded-lg">
+              <div className="px-4 py-5 sm:p-6">
+                <div className="animate-pulse">
+                  <div className="h-6 bg-gray-200 rounded w-1/4 mb-6"></div>
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="border border-gray-200 rounded-lg p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4">
+                            <div className="h-5 w-20 bg-gray-200 rounded"></div>
+                            <div className="h-5 w-32 bg-gray-200 rounded"></div>
+                            <div className="h-5 w-24 bg-gray-200 rounded"></div>
+                            <div className="h-5 w-28 bg-gray-200 rounded"></div>
+                          </div>
+                          <div className="flex space-x-3">
+                            <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                            <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -708,6 +773,20 @@ export default function CounselorAvailability() {
                                   ))}
                                 </div>
                               </div>
+                              <div className="flex items-center space-x-2">
+                                <label className="text-sm text-gray-700">Recurrence:</label>
+                                <select
+                                  value={editingData.recurrence || "weekly"}
+                                  onChange={(e) => updateEditingField("recurrence", e.target.value)}
+                                  className="block rounded-lg border-gray-200 bg-white py-1.5 px-2 shadow-sm text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                  {recurrenceOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </>
                           ) : (
                             <>
@@ -724,6 +803,11 @@ export default function CounselorAvailability() {
                                   {slot.sessionTypes?.join(", ") || "30min, 60min"}
                                 </span>
                               </div>
+                              <div className="flex items-center space-x-2">
+                                <span className="text-sm text-gray-600">
+                                  Recurrence: {recurrenceOptions.find(opt => opt.value === (slot.recurrence || "weekly"))?.label || "Weekly"}
+                                </span>
+                              </div>
                             </>
                           )}
                         </div>
@@ -731,7 +815,10 @@ export default function CounselorAvailability() {
                           {editingSlotId === slot.id ? (
                             <>
                               <button
-                                onClick={() => saveEditing(slot.id)}
+                                onClick={() => {
+                                  setPendingEditSlotId(slot.id);
+                                  setShowEditConfirm(true);
+                                }}
                                 disabled={isLoading}
                                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                               >
@@ -959,18 +1046,6 @@ export default function CounselorAvailability() {
           className="relative z-10"
           onClose={() => setShowDeleteConfirm(false)}
         >
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-white/50 backdrop-blur-sm" />
-          </Transition.Child>
-
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
@@ -1030,18 +1105,6 @@ export default function CounselorAvailability() {
           className="relative z-10"
           onClose={() => setShowUpdateConfirm(false)}
         >
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-white/50 backdrop-blur-sm" />
-          </Transition.Child>
-
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
@@ -1083,6 +1146,71 @@ export default function CounselorAvailability() {
                       }}
                     >
                       Save
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Edit/Update Confirmation Modal */}
+      <Transition appear show={showEditConfirm} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-10"
+          onClose={() => {
+            setShowEditConfirm(false);
+            setPendingEditSlotId(null);
+          }}
+        >
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900"
+                  >
+                    Update Availability Slot
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      Are you sure you want to update this availability slot?
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={() => {
+                        setShowEditConfirm(false);
+                        setPendingEditSlotId(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={() => {
+                        if (pendingEditSlotId) {
+                          saveEditing(pendingEditSlotId);
+                        }
+                      }}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Updating..." : "Update"}
                     </button>
                   </div>
                 </Dialog.Panel>

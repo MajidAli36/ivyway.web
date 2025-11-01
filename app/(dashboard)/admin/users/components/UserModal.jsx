@@ -100,13 +100,11 @@ export default function UserModal({ user, isOpen, onClose, onSave }) {
           phoneNumber: user?.counselorProfile?.phoneNumber || "",
           location: user?.counselorProfile?.location || "",
           bio: user?.counselorProfile?.bio || "",
-          specialization: user?.counselorProfile?.specialization || "",
           experience: user?.counselorProfile?.experience || 0,
           education: user?.counselorProfile?.education || "",
           certifications: user?.counselorProfile?.certifications || [],
           languages: user?.counselorProfile?.languages || [],
           availability: user?.counselorProfile?.availability || [],
-          hourlyRate: user?.counselorProfile?.hourlyRate || 0,
         },
       });
     }
@@ -766,21 +764,6 @@ export default function UserModal({ user, isOpen, onClose, onSave }) {
                         </div>
                       </div>
                       <div>
-                        <label htmlFor="specialization" className="block text-sm font-medium text-gray-700 mb-2">
-                          Specialization
-                        </label>
-                        <input
-                          type="text"
-                          name="counselorProfile.specialization"
-                          id="specialization"
-                          value={formData.counselorProfile.specialization}
-                          onChange={handleChange}
-                          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="e.g., College Admissions, Career Counseling"
-                        />
-                      </div>
-
-                      <div>
                         <label htmlFor="counselorExperience" className="block text-sm font-medium text-gray-700 mb-2">
                           Years of Experience
                         </label>
@@ -807,22 +790,6 @@ export default function UserModal({ user, isOpen, onClose, onSave }) {
                           onChange={handleChange}
                           className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="e.g., Master's in Counseling"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="counselorHourlyRate" className="block text-sm font-medium text-gray-700 mb-2">
-                          Hourly Rate ($)
-                        </label>
-                        <input
-                          type="number"
-                          name="counselorProfile.hourlyRate"
-                          id="counselorHourlyRate"
-                          value={formData.counselorProfile.hourlyRate}
-                          onChange={handleChange}
-                          min="0"
-                          step="0.01"
-                          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
 

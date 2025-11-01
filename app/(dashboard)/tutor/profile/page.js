@@ -15,7 +15,8 @@
  * - Direct video display (no URL construction needed)
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
 import { Formik, Form, Field, FieldArray } from "formik";
 import * as Yup from "yup";
 import {
@@ -166,6 +167,7 @@ const TutorProfile = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 2FA States - Matching student profile
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -176,6 +178,7 @@ const TutorProfile = () => {
 
   const fileInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const submitFormRef = useRef(null);
 
   // Load profile data from API
   useEffect(() => {
@@ -341,6 +344,8 @@ const TutorProfile = () => {
         }));
         setSuccessMessage("Intro video uploaded successfully!");
         setTimeout(() => setSuccessMessage(""), 5000);
+        // Reload profile to get updated completion
+        await loadProfile();
       } else {
         throw new Error(data.message || "Upload failed");
       }
@@ -360,6 +365,56 @@ const TutorProfile = () => {
         setIsSaving(false);
         setUploadProgress(0);
       }, 1000);
+    }
+  };
+
+  const handleVideoDelete = async () => {
+    try {
+      setIsSaving(true);
+      setError("");
+      const response = await fetch(`${API_CONFIG.baseURL}/tutors/profile/intro-video`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${apiClientClass.getAuthToken()}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setFormData((prev) => ({
+          ...prev,
+          introVideoUrl: "",
+        }));
+        setSuccessMessage("Intro video deleted successfully!");
+        setTimeout(() => setSuccessMessage(""), 5000);
+        // Reload profile to get updated completion
+        await loadProfile();
+      } else {
+        throw new Error(data.message || "Failed to delete video");
+      }
+    } catch (err) {
+      console.error("Error deleting video:", err);
+      // Extract error message from various possible formats
+      let errorMessage = "Failed to delete video. Please try again.";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.message) {
+        errorMessage = err.response.message;
+      } else if (err.status && err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsSaving(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -541,19 +596,13 @@ const TutorProfile = () => {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     setIsEditing(false);
     setError("");
     setSuccessMessage("");
     setShowSuccessModal(false);
-    // Reset profile image if not saved
-    if (formData.profileImage) {
-      setFormData((prev) => ({
-        ...prev,
-        profileImage: null,
-        profileImageUrl: prev.profileImageUrl,
-      }));
-    }
+    // Reload profile to reset all changes including profile image
+    await loadProfile();
   };
 
 
@@ -594,13 +643,34 @@ const TutorProfile = () => {
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              {!isEditing && (
+              {!isEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                 >
                   Edit Profile
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (submitFormRef && submitFormRef.current) {
+                        submitFormRef.current();
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -654,7 +724,10 @@ const TutorProfile = () => {
           onSubmit={handleFormSubmit}
           enableReinitialize={true}
         >
-          {({ values, errors, touched, setFieldValue, isSubmitting }) => (
+          {({ values, errors, touched, setFieldValue, isSubmitting, submitForm }) => {
+            // Store submitForm in ref so it can be accessed outside
+            submitFormRef.current = submitForm;
+            return (
             <Form className="bg-white shadow rounded-lg">
           <div className="p-8">
             {/* Profile Photo Section */}
@@ -1280,136 +1353,102 @@ const TutorProfile = () => {
               )}
             </div>
 
-            {/* Intro Video Section */}
-            <div id="introVideoUrl" className="mb-8">
-              <div className="flex items-center mb-6">
-                <VideoCameraIcon className="h-6 w-6 text-blue-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Intro Video
-                </h2>
-              </div>
+          </div>
+            </Form>
+            );
+          }}
+        </Formik>
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={handleVideoFileChange}
-                  className="hidden"
-                />
-
-                {formData.introVideoUrl ? (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      Intro video uploaded
-                    </p>
-                    <video
-                      src={formData.introVideoUrl}
-                      controls
-                      className="mx-auto max-w-md mb-4 rounded-lg shadow-md"
-                      preload="metadata"
-                      onError={(e) => {
-                        console.error("Video loading error:", e);
-                        setError("Video loading error - please try again");
-                      }}
-                    />
-                    {isEditing && (
-                      <div className="flex justify-center space-x-3">
-                        <button
-                          type="button"
-                          onClick={() => videoInputRef.current?.click()}
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                        >
-                          Replace Video
-                        </button>
-                        {/* <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              // Add delete video logic here
-                              setFormData((prev) => ({
-                                ...prev,
-                                introVideoUrl: "",
-                              }));
-                              setSuccessMessage("Video removed successfully!");
-                              setTimeout(() => setSuccessMessage(""), 3000);
-                            } catch (err) {
-                              console.error("Error removing video:", err);
-                              setError(
-                                "Failed to remove video. Please try again."
-                              );
-                            }
-                          }}
-                          className="text-red-600 hover:text-red-700 text-sm font-medium"
-                        >
-                          Remove Video
-                        </button> */}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-sm text-gray-600 mb-2">
-                      No intro video uploaded
-                    </p>
-                    <p className="text-xs text-gray-500 mb-4">
-                      Upload a short video introducing yourself (max 100MB)
-                    </p>
-                    {isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => videoInputRef.current?.click()}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                      >
-                        <VideoCameraIcon className="h-4 w-4 mr-2" />
-                        Upload Video
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {isSaving && uploadProgress > 0 && (
-                  <div className="mt-4">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Uploading... {uploadProgress}%
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Intro Video Section - Always visible, outside edit mode */}
+        <div className="mt-8 mb-8 bg-white shadow rounded-lg p-8">
+          <div className="flex items-center mb-6">
+            <VideoCameraIcon className="h-6 w-6 text-blue-600 mr-3" />
+            <h2 className="text-xl font-semibold text-gray-900">
+              Intro Video
+            </h2>
           </div>
 
-              {/* Form Actions */}
-              {isEditing && (
-                <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-                  <div className="flex justify-end space-x-3">
-                    <button
-                      type="button"
-                      onClick={handleCancel}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || isSaving}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSubmitting || isSaving ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleVideoFileChange}
+              className="hidden"
+            />
+
+            {formData.introVideoUrl ? (
+              <div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Intro video uploaded
+                </p>
+                <video
+                  src={formData.introVideoUrl}
+                  controls
+                  className="mx-auto max-w-md mb-4 rounded-lg shadow-md"
+                  preload="metadata"
+                  onError={(e) => {
+                    console.error("Video loading error:", e);
+                    setError(
+                      "Failed to load video. Please try uploading again."
+                    );
+                  }}
+                />
+                <div className="flex justify-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    className="inline-flex items-center px-4 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    <VideoCameraIcon className="h-4 w-4 mr-2" />
+                    Replace Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSaving}
+                    className="inline-flex items-center px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <XMarkIcon className="h-4 w-4 mr-2" />
+                    Delete Video
+                  </button>
                 </div>
-              )}
-            </Form>
-          )}
-        </Formik>
+              </div>
+            ) : (
+              <div>
+                <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-sm text-gray-600 mb-2">
+                  No intro video uploaded
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Upload a short video introducing yourself (max 100MB)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                >
+                  <VideoCameraIcon className="h-4 w-4 mr-2" />
+                  Upload Video
+                </button>
+              </div>
+            )}
+
+            {isSaving && uploadProgress > 0 && (
+              <div className="mt-4">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Uploading... {uploadProgress}%
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         <TwoFAModal />
         <SuccessModal 
@@ -1419,6 +1458,59 @@ const TutorProfile = () => {
           title="Tutor Profile Updated Successfully!"
           message="Your tutor profile has been updated successfully. All changes have been saved and your profile is now up to date."
         />
+
+        {/* Delete Video Confirmation Modal */}
+        <Transition appear show={showDeleteConfirm} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowDeleteConfirm(false)}>
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900 flex items-center gap-2"
+                    >
+                      <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+                      Delete Intro Video
+                    </Dialog.Title>
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to delete your intro video? This action cannot be undone.
+                      </p>
+                    </div>
+
+                    <div className="mt-6 flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={handleVideoDelete}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
       </div>
     </div>
   );

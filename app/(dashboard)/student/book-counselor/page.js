@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -74,10 +74,6 @@ function CounselorCard({ counselor, onSelect, isSelected }) {
                   e.target.src = "/default-avatar.png";
                 }}
               />
-              {/* Online status indicator */}
-              <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 bg-green-500 rounded-full border-2 border-white shadow-sm">
-                <div className="w-full h-full rounded-full bg-green-400 animate-pulse"></div>
-              </div>
             </div>
           </div>
 
@@ -151,18 +147,16 @@ function CounselorCard({ counselor, onSelect, isSelected }) {
           </div>
         </div>
 
-        {/* Footer - Experience and Availability */}
+        {/* Footer - Experience */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-gray-100 space-y-1 sm:space-y-0">
           <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-4 text-xs text-gray-500">
             <span className="flex items-center">
               <svg className="w-3 h-3 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
               </svg>
-              <span className="truncate">{counselor.experience || 5}+ years exp</span>
-            </span>
-            <span className="flex items-center">
-              <div className="w-2 h-2 bg-green-400 rounded-full mr-1 flex-shrink-0"></div>
-              <span className="truncate">Available today</span>
+              <span className="truncate">
+                {(counselor.experience && counselor.experience > 0) ? counselor.experience : 5}+ years experience
+              </span>
             </span>
           </div>
           
@@ -184,6 +178,7 @@ function DateTimePicker({
   selectedTime,
   duration,
   onSelect,
+  onAvailabilityDataChange,
 }) {
   const [availableDates, setAvailableDates] = useState([]);
   const [availableTimes, setAvailableTimes] = useState([]);
@@ -200,54 +195,216 @@ function DateTimePicker({
       try {
         setLoading(true);
         console.log("Fetching provider availability for counselor:", counselor.id);
-        const response = await availability.getTutorAvailability(counselor.id);
+        // Use counselor availability endpoint for booking
+        const response = await counselors.getAvailability(counselor.id);
         let processed = [];
         if (response.data && response.data.availabilities) {
           processed = response.data.availabilities;
+        } else if (response.data && response.data.availability) {
+          // Handle availability grouped by day of week format
+          const availabilityByDay = response.data.availability;
+          processed = [];
+          Object.keys(availabilityByDay).forEach((dayOfWeek) => {
+            const daySlots = availabilityByDay[dayOfWeek];
+            if (Array.isArray(daySlots)) {
+              daySlots.forEach((slot) => {
+                processed.push({
+                  ...slot,
+                  dayOfWeek: parseInt(dayOfWeek),
+                  // Ensure recurrence and createdAt are preserved
+                  recurrence: slot.recurrence,
+                  createdAt: slot.createdAt || null,
+                });
+              });
+            }
+          });
         } else if (Array.isArray(response.data)) {
-          processed = response.data;
+          processed = response.data.map(slot => ({
+            ...slot,
+            recurrence: slot.recurrence,
+            createdAt: slot.createdAt || null,
+          }));
         }
         setAvailabilityData(processed);
+        // Pass availability data to parent component
+        if (onAvailabilityDataChange) {
+          onAvailabilityDataChange(processed);
+        }
       } catch (error) {
         console.error("Error fetching counselor availability:", error);
         console.error("Error details:", error.response?.data);
+        if (onAvailabilityDataChange) {
+          onAvailabilityDataChange(null);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchAvailability();
-  }, [counselor]);
+  }, [counselor, onAvailabilityDataChange]);
 
-  // Build available dates based on availability slots (respect one-time)
+  // Build available dates based on availability slots (respect one-time and session duration)
   useEffect(() => {
     if (!availabilityData || !Array.isArray(availabilityData) || availabilityData.length === 0) {
       setAvailableDates([]);
       return;
     }
+    
+    // Check if counselor has availability for the selected duration
+    const hasDurationAvailability = availabilityData.some((slot) => {
+      const isAvailable = slot.isAvailable !== false;
+      const supportsDuration = !slot.sessionTypes || slot.sessionTypes.length === 0 || slot.sessionTypes.includes(duration);
+      return isAvailable && supportsDuration;
+    });
+    
+    if (!hasDurationAvailability) {
+      setAvailableDates([]);
+      return;
+    }
+    
     const dateSet = new Set();
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day for accurate comparisons
     
-    // Add explicit one-time dates
+    // Handle one-time slots separately - they should only show ONE specific date
+    // For one-time slots, calculate the FIRST occurrence of dayOfWeek on or after creation
+    const oneTimeDates = new Set();
     availabilityData.forEach((slot) => {
-      if (slot?.recurrence === 'one-time' && slot?.nextDate) {
-        dateSet.add(slot.nextDate);
+      if (slot?.recurrence === 'one-time') {
+        const isAvailable = slot.isAvailable !== false;
+        const supportsDuration = !slot.sessionTypes || slot.sessionTypes.length === 0 || slot.sessionTypes.includes(duration);
+        
+        if (isAvailable && supportsDuration) {
+          // Calculate the one-time date: first occurrence of dayOfWeek on or after creation date
+          const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+          slotCreatedAt.setHours(0, 0, 0, 0);
+          
+          const dow = Number(slot.dayOfWeek);
+          const creationDayOfWeek = slotCreatedAt.getDay();
+          
+          // Calculate days until next occurrence of this dayOfWeek
+          let daysToAdd = (dow - creationDayOfWeek + 7) % 7;
+          
+          // If creation day IS the target dayOfWeek, check if it's in the future
+          // If it's today or past, move to next week (7 days later)
+          if (daysToAdd === 0) {
+            if (slotCreatedAt < today) {
+              daysToAdd = 7; // Move to next week
+            }
+            // If slotCreatedAt >= today and same day, use it (daysToAdd stays 0)
+          }
+          
+          const oneTimeDate = new Date(slotCreatedAt);
+          oneTimeDate.setDate(slotCreatedAt.getDate() + daysToAdd);
+          oneTimeDate.setHours(0, 0, 0, 0);
+          
+          // Only add one-time dates that are today or in the future
+          if (oneTimeDate >= today) {
+            const dateKey = format(oneTimeDate, 'yyyy-MM-dd');
+            oneTimeDates.add(dateKey);
+            dateSet.add(dateKey);
+          }
+        }
       }
     });
 
-    // Expand recurring by next 30 days
-    for (let i = 0; i < 30; i++) {
+    // Expand recurring by next 60 days - only include dates with slots supporting selected duration
+    // Handle weekly, biweekly, and monthly recurrence
+    // IMPORTANT: Skip one-time slots here - they're already handled above
+    for (let i = 0; i < 60; i++) {
       const checkDate = addDays(today, i);
       const dayOfWeek = getDay(checkDate);
+      const dateKey = format(checkDate, 'yyyy-MM-dd');
+      const dayOfMonth = checkDate.getDate();
+      
       const hasRecurring = availabilityData.some((slot) => {
+        // Skip one-time slots - they're handled separately above
         if (slot?.recurrence === 'one-time') return false;
         const dow = Number(slot.dayOfWeek);
         const isAvailable = slot.isAvailable !== false;
-        const hasSessionType = !slot.sessionTypes || slot.sessionTypes.length > 0;
-        return dow === dayOfWeek && isAvailable && hasSessionType;
+        const supportsDuration = !slot.sessionTypes || slot.sessionTypes.length === 0 || slot.sessionTypes.includes(duration);
+        
+        if (!isAvailable || !supportsDuration) {
+          return false;
+        }
+        
+        // Handle different recurrence types
+        const recurrence = slot.recurrence;
+        
+        if (recurrence === 'weekly') {
+          // Weekly: matches every week on this day - check day of week
+          if (dow !== dayOfWeek) return false;
+          return true;
+        } else if (recurrence === 'monthly') {
+          // Monthly: same day of month each month (NOT day of week!)
+          // For monthly, we check day of month, not day of week
+          const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+          slotCreatedAt.setHours(0, 0, 0, 0);
+          const baseDayOfMonth = slotCreatedAt.getDate();
+          const checkDayOfMonth = checkDate.getDate();
+          
+          // Normalize checkDate for comparison
+          const checkDateNormalized = new Date(checkDate);
+          checkDateNormalized.setHours(0, 0, 0, 0);
+          
+          // CRITICAL: Monthly slots must be in a DIFFERENT month AND same day of month
+          const isDifferentMonth = checkDateNormalized.getMonth() !== slotCreatedAt.getMonth() || 
+                                  checkDateNormalized.getFullYear() !== slotCreatedAt.getFullYear();
+          
+          // Check if this date is in a future month with the same day of month
+          if (isDifferentMonth && checkDateNormalized > slotCreatedAt && checkDayOfMonth === baseDayOfMonth) {
+            return true;
+          }
+          
+          // Handle edge cases for months with fewer days (e.g., Feb 30/31 -> show last day of month)
+          if (baseDayOfMonth >= 29) {
+            const lastDayOfMonth = new Date(checkDate.getFullYear(), checkDate.getMonth() + 1, 0).getDate();
+            if (checkDayOfMonth === lastDayOfMonth && isDifferentMonth && checkDateNormalized > slotCreatedAt) {
+              // Check if the base day would fall on this month's last day
+              const testDate = new Date(checkDate.getFullYear(), checkDate.getMonth(), baseDayOfMonth);
+              if (testDate.getMonth() !== checkDate.getMonth()) {
+                // The base day doesn't exist in this month, so show last day
+                return true;
+              }
+            }
+          }
+          
+          return false;
+        } else if (recurrence === 'biweekly') {
+          // Biweekly: matches every 2 weeks (14 days) on this day
+          // Use slot createdAt to determine the biweekly cycle
+          const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+          slotCreatedAt.setHours(0, 0, 0, 0);
+          
+          // Find the first occurrence of this dayOfWeek on or after creation date
+          const firstOccurrence = new Date(slotCreatedAt);
+          const creationDayOfWeek = firstOccurrence.getDay();
+          const daysToAdd = (dow - creationDayOfWeek + 7) % 7;
+          if (daysToAdd === 0 && firstOccurrence.getDay() !== dow) {
+            firstOccurrence.setDate(firstOccurrence.getDate() + 7);
+          } else {
+            firstOccurrence.setDate(firstOccurrence.getDate() + daysToAdd);
+          }
+          firstOccurrence.setHours(0, 0, 0, 0);
+          
+          // Normalize checkDate for comparison
+          const checkDateNormalized = new Date(checkDate);
+          checkDateNormalized.setHours(0, 0, 0, 0);
+          const daysSinceFirst = Math.floor((checkDateNormalized.getTime() - firstOccurrence.getTime()) / (24 * 60 * 60 * 1000));
+          
+          // For biweekly, day of week must match
+          if (dow !== dayOfWeek) return false;
+          
+          // Biweekly means every 14 days - check if daysSinceFirst is a multiple of 14 and >= 0
+          return daysSinceFirst >= 0 && daysSinceFirst % 14 === 0;
+        }
+        
+        return false;
       });
+      
       if (hasRecurring) {
-        dateSet.add(format(checkDate, 'yyyy-MM-dd'));
+        dateSet.add(dateKey);
       }
       if (dateSet.size >= 14) break;
     }
@@ -268,16 +425,119 @@ function DateTimePicker({
       setAvailableTimes([]);
       return;
     }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to start of day for accurate comparisons
     const dayOfWeek = getDay(date);
     const selectedDuration = duration === "30min" ? 30 : 60;
     const dateKey = format(date, 'yyyy-MM-dd');
+    const dayOfMonth = date.getDate();
+    
     const daySlots = availabilityData.filter((slot) => {
       const dow = Number(slot.dayOfWeek);
       const isAvailable = slot.isAvailable !== false;
+      const supportsDuration = !slot.sessionTypes || slot.sessionTypes.length === 0 || slot.sessionTypes.includes(duration);
+      
+      if (!isAvailable || !supportsDuration) return false;
+      
+      // Handle one-time slots - must match the exact calculated date (ONLY ONE DATE)
       if (slot?.recurrence === 'one-time') {
-        return isAvailable && slot.nextDate === dateKey;
+        // Calculate the one-time date: first occurrence of dayOfWeek on or after creation date
+        const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+        slotCreatedAt.setHours(0, 0, 0, 0);
+        
+        const creationDayOfWeek = slotCreatedAt.getDay();
+        let daysToAdd = (dow - creationDayOfWeek + 7) % 7;
+        
+        // If creation day IS the target dayOfWeek, check if it's in the future
+        // If it's in the past, move to next week (7 days later)
+        if (daysToAdd === 0) {
+          if (slotCreatedAt < today) {
+            daysToAdd = 7; // Move to next week
+          }
+          // If slotCreatedAt >= today and same day, use it (daysToAdd stays 0)
+        }
+        
+        const oneTimeDate = new Date(slotCreatedAt);
+        oneTimeDate.setDate(slotCreatedAt.getDate() + daysToAdd);
+        oneTimeDate.setHours(0, 0, 0, 0);
+        const oneTimeDateKey = format(oneTimeDate, 'yyyy-MM-dd');
+        
+        // CRITICAL: Only show time slots for the exact one-time date
+        // This ensures one-time slots only appear on ONE date, not every week
+        return oneTimeDateKey === dateKey;
       }
-      return dow === dayOfWeek && isAvailable;
+      
+      // Handle different recurrence types
+      const recurrence = slot.recurrence;
+      
+      if (recurrence === 'weekly') {
+        // Weekly: matches every week on this day - check day of week matches
+        if (dow !== dayOfWeek) return false;
+        return true;
+      } else if (recurrence === 'biweekly') {
+        // Biweekly: every 2 weeks (14 days) on this day - check day of week matches
+        if (dow !== dayOfWeek) return false;
+        
+        // Use slot createdAt to determine the biweekly cycle
+        const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+        slotCreatedAt.setHours(0, 0, 0, 0);
+        
+        // Find the first occurrence of this dayOfWeek on or after creation date
+        const firstOccurrence = new Date(slotCreatedAt);
+        const creationDayOfWeek = firstOccurrence.getDay();
+        const daysToAdd = (dow - creationDayOfWeek + 7) % 7;
+        if (daysToAdd === 0 && firstOccurrence.getDay() !== dow) {
+          firstOccurrence.setDate(firstOccurrence.getDate() + 7);
+        } else {
+          firstOccurrence.setDate(firstOccurrence.getDate() + daysToAdd);
+        }
+        firstOccurrence.setHours(0, 0, 0, 0);
+        
+        // Calculate days since first occurrence
+        const dateNormalized = new Date(date);
+        dateNormalized.setHours(0, 0, 0, 0);
+        const daysSinceFirst = Math.floor((dateNormalized.getTime() - firstOccurrence.getTime()) / (24 * 60 * 60 * 1000));
+        
+        // Biweekly means every 14 days - check if daysSinceFirst is a multiple of 14 and >= 0
+        return daysSinceFirst >= 0 && daysSinceFirst % 14 === 0;
+      } else if (recurrence === 'monthly') {
+        // Monthly: same day of month each month (NOT day of week - can be any day!)
+        // For monthly, we ONLY check day of month, not day of week
+        const slotCreatedAt = slot.createdAt ? new Date(slot.createdAt) : today;
+        slotCreatedAt.setHours(0, 0, 0, 0);
+        const baseDayOfMonth = slotCreatedAt.getDate();
+        const checkDayOfMonth = date.getDate();
+        
+        // Normalize date for comparison
+        const dateNormalized = new Date(date);
+        dateNormalized.setHours(0, 0, 0, 0);
+        
+        // CRITICAL: Monthly slots must be in a DIFFERENT month AND same day of month
+        const isDifferentMonth = dateNormalized.getMonth() !== slotCreatedAt.getMonth() || 
+                                dateNormalized.getFullYear() !== slotCreatedAt.getFullYear();
+        
+        // Check if this date is in a future month with the same day of month
+        if (isDifferentMonth && dateNormalized > slotCreatedAt && checkDayOfMonth === baseDayOfMonth) {
+          return true;
+        }
+        
+        // Handle edge cases for months with fewer days (e.g., Feb 30/31 -> show last day of month)
+        if (baseDayOfMonth >= 29) {
+          const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+          if (checkDayOfMonth === lastDayOfMonth && isDifferentMonth && dateNormalized > slotCreatedAt) {
+            // Check if the base day would fall on this month's last day
+            const testDate = new Date(date.getFullYear(), date.getMonth(), baseDayOfMonth);
+            if (testDate.getMonth() !== date.getMonth()) {
+              // The base day doesn't exist in this month, so show last day
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      }
+      
+      return false;
     });
     if (!daySlots.length) {
       setAvailableTimes([]);
@@ -336,6 +596,25 @@ function DateTimePicker({
     onSelect({ date, time: selectedTime });
   };
 
+  // Don't render if no duration selected
+  if (!duration) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CalendarIcon className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Select Session Duration First
+          </h3>
+          <p className="text-gray-500">
+            Please select a session duration (30 minutes or 60 minutes) above to view available dates and times.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -383,10 +662,10 @@ function DateTimePicker({
               No available dates
             </h3>
             <p className="text-gray-500 mb-4">
-              This counselor doesn't have any available slots for {duration === "30min" ? "30-minute" : "60-minute"} sessions in the next 30 days.
+              This counselor doesn't have any available slots for <strong>{duration === "30min" ? "30-minute" : "60-minute"}</strong> sessions in the next 30 days.
             </p>
             <p className="text-sm text-gray-400">
-              Try selecting a different session duration or contact support for assistance.
+              Please try selecting the <strong>{duration === "30min" ? "60-minute" : "30-minute"}</strong> session duration or contact support for assistance.
             </p>
           </div>
         )}
@@ -466,7 +745,7 @@ export default function BookCounselorPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedCounselor, setSelectedCounselor] = useState(null);
-  const [selectedSessionType, setSelectedSessionType] = useState("30min"); // Default to 30min for counselors
+  const [selectedSessionType, setSelectedSessionType] = useState(null); // No default - user must select
   const [selectedDateTime, setSelectedDateTime] = useState({
     date: null,
     time: null,
@@ -485,6 +764,43 @@ export default function BookCounselorPage() {
   const [error, setError] = useState(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successCountdown, setSuccessCountdown] = useState(5);
+  const [counselorAvailabilityData, setCounselorAvailabilityData] = useState(null);
+  const countdownIntervalRef = useRef(null);
+
+  // Handle success popup countdown and redirect
+  useEffect(() => {
+    if (showSuccessPopup && successCountdown > 0) {
+      // Clear any existing interval
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      
+      // Set up countdown interval
+      countdownIntervalRef.current = setInterval(() => {
+        setSuccessCountdown((s) => {
+          if (s <= 1) {
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    } else if (showSuccessPopup && successCountdown === 0) {
+      // Clear interval and redirect when countdown reaches 0
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      router.push('/student/my-sessions');
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
+  }, [showSuccessPopup, successCountdown, router]);
 
   const steps = [
     { id: "plan", name: "Plan" },
@@ -592,28 +908,8 @@ export default function BookCounselorPage() {
   const handleCounselorSelect = (counselor) => {
     setSelectedCounselor(counselor);
     setError(null); // Clear any existing errors when selecting counselor
-    
-    // Auto-detect available session types for this counselor
-    if (counselor.availability) {
-      const allSessionTypes = new Set();
-      Object.values(counselor.availability).forEach(daySlots => {
-        if (Array.isArray(daySlots)) {
-          daySlots.forEach(slot => {
-            if (slot.sessionTypes) {
-              slot.sessionTypes.forEach(type => allSessionTypes.add(type));
-            }
-          });
-        }
-      });
-      
-      const availableTypes = Array.from(allSessionTypes);
-      if (availableTypes.length > 0) {
-        // Prefer 30min if available, otherwise use the first available type
-        const preferredType = availableTypes.includes("30min") ? "30min" : availableTypes[0];
-        setSelectedSessionType(preferredType);
-        console.log(`Auto-selected session type: ${preferredType} from available: ${availableTypes.join(", ")}`);
-      }
-    }
+    // Reset session type selection - user must choose
+    setSelectedSessionType(null);
     // Do not auto-advance; let user click Continue
   };
 
@@ -1249,28 +1545,50 @@ export default function BookCounselorPage() {
                 {selectedCounselor && (
                   <div className="mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                      Session Duration
+                      Session Duration <span className="text-red-500">*</span>
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
-                      {["30min", "60min"].map((duration) => (
-                        <button
-                          key={duration}
-                          onClick={() => setSelectedSessionType(duration)}
-                          className={`p-4 text-center rounded-xl border-2 transition-all duration-200 ${
-                            selectedSessionType === duration
-                              ? "border-blue-500 bg-blue-50 text-blue-700 shadow-lg"
-                              : "border-gray-200 hover:border-blue-300 hover:shadow-md"
-                          }`}
-                        >
-                          <div className="text-lg font-semibold">
-                            {duration === "30min" ? "30 minutes" : "60 minutes"}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {duration === "30min" ? "Quick consultation" : "In-depth session"}
-                          </div>
-                        </button>
-                      ))}
+                      {["30min", "60min"].map((duration) => {
+                        // Check if counselor has availability for this duration
+                        const hasAvailability = counselorAvailabilityData && Array.isArray(counselorAvailabilityData) && counselorAvailabilityData.some((slot) => {
+                          const isAvailable = slot.isAvailable !== false;
+                          const supportsDuration = !slot.sessionTypes || slot.sessionTypes.length === 0 || slot.sessionTypes.includes(duration);
+                          return isAvailable && supportsDuration;
+                        });
+                        
+                        return (
+                          <button
+                            key={duration}
+                            onClick={() => setSelectedSessionType(duration)}
+                            disabled={!hasAvailability}
+                            className={`p-4 text-center rounded-xl border-2 transition-all duration-200 relative ${
+                              selectedSessionType === duration
+                                ? "border-blue-500 bg-blue-50 text-blue-700 shadow-lg"
+                                : hasAvailability
+                                ? "border-gray-200 hover:border-blue-300 hover:shadow-md"
+                                : "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <div className="text-lg font-semibold">
+                              {duration === "30min" ? "30 minutes" : "60 minutes"}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {duration === "30min" ? "Quick consultation" : "In-depth session"}
+                            </div>
+                            {!hasAvailability && (
+                              <div className="absolute top-2 right-2">
+                                <span className="text-xs text-red-500 font-medium">Not available</span>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {!selectedSessionType && (
+                      <p className="mt-2 text-sm text-red-600">
+                        Please select a session duration to continue
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1280,6 +1598,7 @@ export default function BookCounselorPage() {
                   selectedTime={selectedDateTime.time}
                   duration={selectedSessionType}
                   onSelect={handleDateTimeSelect}
+                  onAvailabilityDataChange={setCounselorAvailabilityData}
                 />
 
                 <div className="mt-8 flex flex-col sm:flex-row justify-between gap-4">
@@ -1291,7 +1610,7 @@ export default function BookCounselorPage() {
                   </button>
                   <button
                     onClick={handleNext}
-                    disabled={!selectedDateTime.date || !selectedDateTime.time}
+                    disabled={!selectedSessionType || !selectedDateTime.date || !selectedDateTime.time}
                     className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold text-lg"
                   >
                     Continue
@@ -1664,16 +1983,6 @@ export default function BookCounselorPage() {
                         setShowPaymentModal(false);
                         setShowSuccessPopup(true);
                         setSuccessCountdown(5);
-                        const interval = setInterval(() => {
-                          setSuccessCountdown((s) => {
-                            if (s <= 1) {
-                              clearInterval(interval);
-                              router.push('/student/my-sessions');
-                              return 0;
-                            }
-                            return s - 1;
-                          });
-                        }, 1000);
                       }}
                       onError={(error) => {
                         console.error("Payment error:", error);
